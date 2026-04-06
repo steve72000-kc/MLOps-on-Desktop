@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-argo-workflows
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    grafana_folder: Platform
+    argocd.argoproj.io/sync-wave: "30"
+data:
+  argo-workflows-health.json: |-
+    {
+      "title": "Platform / Argo Workflows",
+      "uid": "platform-argo-workflows",
+      "tags": ["platform", "argo-workflows"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Workflow Success Rate (/s)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(rate(argo_workflows_count{phase=\"Succeeded\"}[15m]))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Workflow Failure Rate (/s)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(rate(argo_workflows_count{phase=~\"Failed|Error\"}[15m]))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Runtime p95 (s)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(argo_workflows_duration_seconds_bucket[15m])) by (le))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Workflow Controller Ready Pods",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(kube_pod_status_ready{namespace=\"argo\",condition=\"true\",pod=~\"workflow-controller.*\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Workflow Outcomes by Phase",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum by (phase) (rate(argo_workflows_count[15m]))"}],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Workflow Runtime p95 Trend",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(argo_workflows_duration_seconds_bucket[15m])) by (le))"}],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+        }
+      ]
+    }

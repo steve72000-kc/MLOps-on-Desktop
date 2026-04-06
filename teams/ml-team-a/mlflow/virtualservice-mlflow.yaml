@@ -1,0 +1,19 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: mlflow
+  namespace: ml-team-a
+spec:
+  gateways:
+  - knative-serving/knative-ingress-gateway
+  hosts:
+  - mlflow.ml-team-a.local
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: mlflow.ml-team-a.svc.cluster.local
+        port:
+          number: 80

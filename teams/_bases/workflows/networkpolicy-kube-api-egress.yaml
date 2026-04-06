@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: workflow-kube-api-egress
+spec:
+  podSelector:
+    matchExpressions:
+    - key: workflows.argoproj.io/workflow
+      operator: Exists
+  policyTypes:
+  - Egress
+  egress:
+  # Allow workflow pods to reach the in-cluster Kubernetes service VIP.
+  - to:
+    - ipBlock:
+        cidr: 10.96.0.0/12
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow workflow pods to reach the kind control-plane API endpoint directly
+  # when API traffic resolves to the Docker network instead of the service VIP.
+  - to:
+    - ipBlock:
+        cidr: 172.29.0.0/24
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443

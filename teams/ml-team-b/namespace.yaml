@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-team-b
+  labels:
+    istio-injection: enabled
+    app.kubernetes.io/part-of: ai-ml
+    platform.ai-ml/layer: teams
+    platform.ai-ml/tenant: ml-team-b
+    platform.ai-ml/environment: kind

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: ml-team-a
+spec:
+  hard:
+    requests.cpu: "12"
+    requests.memory: 8Gi
+    limits.cpu: "18"
+    limits.memory: 12Gi
+    pods: "20"

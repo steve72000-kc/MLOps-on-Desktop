@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mlflow-ml-team-a
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  sources:
+  - repoURL: https://community-charts.github.io/helm-charts
+    chart: mlflow
+    targetRevision: 1.7.3
+    helm:
+      releaseName: mlflow
+      valueFiles:
+      - $values/infra/mlflow/base/values.yaml
+      - $values/teams/ml-team-a/mlflow/values.yaml
+  - repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitops-admin/ai-ml.git
+    targetRevision: HEAD
+    ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ml-team-a
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

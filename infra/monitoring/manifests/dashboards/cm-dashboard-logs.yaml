@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-platform-logs
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    grafana_folder: Logs
+    argocd.argoproj.io/sync-wave: "30"
+data:
+  platform-logs.json: |-
+    {
+      "title": "Platform / Logs",
+      "uid": "platform-logs",
+      "tags": ["platform", "logs", "loki"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "type": "logs",
+          "title": "argocd",
+          "datasource": "Loki",
+          "targets": [{"refId": "A", "expr": "{namespace=\"argocd\"}"}],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "logs",
+          "title": "argo",
+          "datasource": "Loki",
+          "targets": [{"refId": "A", "expr": "{namespace=\"argo\"}"}],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "kserve + knative-serving",
+          "datasource": "Loki",
+          "targets": [{"refId": "A", "expr": "{namespace=~\"kserve|knative-serving\"}"}],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+        },
+        {
+          "id": 4,
+          "type": "logs",
+          "title": "ml-team-*",
+          "datasource": "Loki",
+          "targets": [{"refId": "A", "expr": "{namespace=~\"ml-team-.*\"}"}],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+        },
+        {
+          "id": 5,
+          "type": "logs",
+          "title": "minio",
+          "datasource": "Loki",
+          "targets": [{"refId": "A", "expr": "{namespace=\"minio\"}"}],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+        }
+      ]
+    }

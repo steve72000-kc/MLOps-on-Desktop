@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-serving
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    grafana_folder: Platform
+    argocd.argoproj.io/sync-wave: "30"
+data:
+  serving-health.json: |-
+    {
+      "title": "Platform / KServe + Knative",
+      "uid": "platform-serving",
+      "tags": ["platform", "kserve", "knative"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Inference Requests / s",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(rate(istio_requests_total{reporter=\"destination\",destination_workload_namespace=~\"kserve|knative-serving|ml-team-.*\"}[5m]))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Inference 5xx Rate (%)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "100 * sum(rate(istio_requests_total{reporter=\"destination\",destination_workload_namespace=~\"kserve|knative-serving|ml-team-.*\",response_code=~\"5..\"}[5m])) / clamp_min(sum(rate(istio_requests_total{reporter=\"destination\",destination_workload_namespace=~\"kserve|knative-serving|ml-team-.*\"}[5m])), 0.001)"}],
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Inference p95 Latency (ms)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_workload_namespace=~\"kserve|knative-serving|ml-team-.*\"}[10m])))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Knative Desired Pods",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(autoscaler_desired_pods{namespace=~\"ml-team-.*\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Inference Requests by Response Code",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum by (response_code) (rate(istio_requests_total{reporter=\"destination\",destination_workload_namespace=~\"kserve|knative-serving|ml-team-.*\"}[5m]))"}],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Knative Actual vs Desired Pods",
+          "datasource": "Prometheus",
+          "targets": [
+            {"refId": "A", "expr": "sum(autoscaler_actual_pods{namespace=~\"ml-team-.*\"})", "legendFormat": "actual"},
+            {"refId": "B", "expr": "sum(autoscaler_desired_pods{namespace=~\"ml-team-.*\"})", "legendFormat": "desired"}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+        }
+      ]
+    }

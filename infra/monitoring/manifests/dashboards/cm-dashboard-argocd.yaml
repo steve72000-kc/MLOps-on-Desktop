@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-argocd
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    grafana_folder: Platform
+    argocd.argoproj.io/sync-wave: "30"
+data:
+  argocd-health.json: |-
+    {
+      "title": "Platform / Argo CD",
+      "uid": "platform-argocd",
+      "tags": ["platform", "argocd"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "OutOfSync Apps",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(argocd_app_info{sync_status=\"OutOfSync\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Degraded Apps",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(argocd_app_info{health_status=\"Degraded\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Total Tracked Apps",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "count(argocd_app_info)"}],
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Sync Error Rate",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(rate(argocd_app_sync_total{phase=~\"Error|Failed\"}[5m]))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Reconcile Duration p95",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))"}],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Apps by Health Status",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum by (health_status) (argocd_app_info)"}],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+        }
+      ]
+    }

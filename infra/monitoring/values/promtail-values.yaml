@@ -1,0 +1,46 @@
+daemonset:
+  enabled: true
+
+deployment:
+  enabled: false
+  replicaCount: 1
+
+extraArgs:
+- -config.expand-env=true
+
+config:
+  clients:
+  - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+  snippets:
+    extraRelabelConfigs:
+    - action: keep
+      source_labels:
+      - __meta_kubernetes_namespace
+      regex: argocd|argo|istio-system|kserve|knative-serving|metallb-system|minio|ml-team-.*|monitoring
+    - action: drop
+      source_labels:
+      - __meta_kubernetes_pod_label_app_kubernetes_io_name
+      regex: promtail
+    - action: drop
+      source_labels:
+      - __meta_kubernetes_pod_label_workflows_argoproj_io_workflow
+      regex: .+
+    - action: keep
+      source_labels:
+      - __meta_kubernetes_pod_phase
+      regex: Pending|Running
+    - action: keep
+      source_labels:
+      - __meta_kubernetes_pod_node_name
+      regex: ${HOSTNAME}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+serviceMonitor:
+  enabled: true

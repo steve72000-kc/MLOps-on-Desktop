@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  sources:
+  - repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 67.10.0
+    helm:
+      releaseName: kube-prometheus-stack
+      valueFiles:
+      - $values/infra/monitoring/values/kube-prometheus-stack-values.yaml
+  - repoURL: https://grafana.github.io/helm-charts
+    chart: loki
+    targetRevision: 6.27.0
+    helm:
+      releaseName: loki
+      valueFiles:
+      - $values/infra/monitoring/values/loki-values.yaml
+  - repoURL: https://grafana.github.io/helm-charts
+    chart: promtail
+    targetRevision: 6.17.0
+    helm:
+      releaseName: promtail
+      valueFiles:
+      - $values/infra/monitoring/values/promtail-values.yaml
+  - repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitops-admin/ai-ml.git
+    targetRevision: HEAD
+    path: infra/monitoring/manifests
+  - repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitops-admin/ai-ml.git
+    targetRevision: HEAD
+    ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true

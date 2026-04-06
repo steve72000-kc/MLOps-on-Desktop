@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-tenant-bootstrap
+  namespace: minio
+data:
+  bootstrap.sh: |
+    #!/bin/sh
+    set -eu
+
+    until mc alias set local "${MINIO_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}" >/dev/null 2>&1; do
+      echo "Waiting for MinIO endpoint ${MINIO_ENDPOINT}..."
+      sleep 2
+    done
+
+    until mc ready local >/dev/null 2>&1; do
+      echo "Waiting for MinIO API readiness..."
+      sleep 2
+    done
+
+    ensure_bucket() {
+      bucket="$1"
+      mc mb --ignore-existing "local/${bucket}" >/dev/null
+    }
+
+    ensure_policy() {
+      policy_name="$1"
+      policy_file="$2"
+      if ! mc admin policy info local "${policy_name}" >/dev/null 2>&1; then
+        mc admin policy create local "${policy_name}" "${policy_file}" >/dev/null
+      fi
+    }
+
+    ensure_user() {
+      user_name="$1"
+      user_secret="$2"
+      if ! mc admin user info local "${user_name}" >/dev/null 2>&1; then
+        mc admin user add local "${user_name}" "${user_secret}" >/dev/null
+      fi
+    }
+
+    ensure_bucket "mlflow-ml-team-a"
+    ensure_bucket "mlflow-ml-team-b"
+
+    ensure_policy "mlflow-ml-team-a-rw" "/config/policy-ml-team-a-rw.json"
+    ensure_policy "mlflow-ml-team-b-rw" "/config/policy-ml-team-b-rw.json"
+
+    ensure_user "${MLFLOW_TEAM_A_ACCESS_KEY}" "${MLFLOW_TEAM_A_SECRET_KEY}"
+    ensure_user "${MLFLOW_TEAM_B_ACCESS_KEY}" "${MLFLOW_TEAM_B_SECRET_KEY}"
+
+    mc admin policy attach local "mlflow-ml-team-a-rw" --user "${MLFLOW_TEAM_A_ACCESS_KEY}" >/dev/null 2>&1 || true
+    mc admin policy attach local "mlflow-ml-team-b-rw" --user "${MLFLOW_TEAM_B_ACCESS_KEY}" >/dev/null 2>&1 || true
+
+    echo "MinIO tenant bootstrap complete."
+
+  policy-ml-team-a-rw.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetBucketLocation",
+            "s3:ListBucket"
+          ],
+          "Resource": [
+            "arn:aws:s3:::mlflow-ml-team-a"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:AbortMultipartUpload",
+            "s3:DeleteObject",
+            "s3:GetObject",
+            "s3:ListMultipartUploadParts",
+            "s3:PutObject"
+          ],
+          "Resource": [
+            "arn:aws:s3:::mlflow-ml-team-a/*"
+          ]
+        }
+      ]
+    }
+
+  policy-ml-team-b-rw.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetBucketLocation",
+            "s3:ListBucket"
+          ],
+          "Resource": [
+            "arn:aws:s3:::mlflow-ml-team-b"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:AbortMultipartUpload",
+            "s3:DeleteObject",
+            "s3:GetObject",
+            "s3:ListMultipartUploadParts",
+            "s3:PutObject"
+          ],
+          "Resource": [
+            "arn:aws:s3:::mlflow-ml-team-b/*"
+          ]
+        }
+      ]
+    }

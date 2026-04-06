@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tenant-config
+  namespace: ml-team-a
+  labels:
+    app.kubernetes.io/part-of: ai-ml
+    platform.ai-ml/layer: teams
+    platform.ai-ml/tenant: ml-team-a
+    platform.ai-ml/tenant-config: "true"
+data:
+  tenant: ml-team-a
+  namespace: ml-team-a
+  trackingUri: http://mlflow.ml-team-a.svc.cluster.local
+  syncAlias: champion
+  challengerMode: status-only
+  writebackRoot: apps/tenants/ml-team-a
+  gitDefaultBranch: auto
+  scriptsConfigMapName: mlflow-tag-sync-scripts
+  mlflowSecretName: mlflow-s3-credentials
+  gitSecretName: mlflow-sync-git-credentials
+  artifactBucket: mlflow-ml-team-a
+  artifactDestination: s3://mlflow-ml-team-a/artifacts
+  artifactS3Endpoint: http://minio.minio.svc.cluster.local:9000
+  mlflowPvcName: mlflow-data

@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kserve
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  ignoreDifferences:
+  - group: admissionregistration.k8s.io
+    kind: MutatingWebhookConfiguration
+    jqPathExpressions:
+    - .webhooks[]?.clientConfig.caBundle
+    - .webhooks[]?.failurePolicy
+  sources:
+  - repoURL: ghcr.io/kserve/charts
+    chart: kserve-crd
+    targetRevision: v0.16.0
+    helm:
+      releaseName: kserve-crd
+  - repoURL: ghcr.io/kserve/charts
+    chart: kserve
+    targetRevision: v0.16.0
+    helm:
+      releaseName: kserve
+  - repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitops-admin/ai-ml.git
+    targetRevision: HEAD
+    path: infra/kserve/runtime-overrides
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kserve
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true

@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-allow-argo-discovery
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes:
+  - Ingress
+  ingress:
+  # Hub discovery runs in the argo namespace and connects to team MLflow over
+  # the tenant service URL. Other tenant pods do not need argo ingress.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argo

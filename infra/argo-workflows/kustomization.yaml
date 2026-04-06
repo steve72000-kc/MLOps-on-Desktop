@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- namespace.yaml
+- https://github.com/argoproj/argo-workflows/releases/download/v3.7.3/install.yaml
+- templates/mlflow-tag-sync-workflow.yaml
+- templates/mlflow-tag-prune-workflow.yaml
+- cron/rbac-mlflow-tag-sync-dispatcher.yaml
+- cron/mlflow-tag-sync-hub-cron.yaml

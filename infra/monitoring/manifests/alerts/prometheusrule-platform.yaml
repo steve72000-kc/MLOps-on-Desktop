@@ -1,0 +1,101 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-monitoring
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "22"
+spec:
+  groups:
+  - name: platform-health
+    rules:
+    - alert: ArgoAppOutOfSync
+      expr: sum(argocd_app_info{sync_status="OutOfSync"}) > 0
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: Argo CD app out of sync
+        description: One or more Argo CD applications have been OutOfSync for over 10 minutes.
+
+    - alert: ArgoAppDegraded
+      expr: sum(argocd_app_info{health_status="Degraded"}) > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: Argo CD app degraded
+        description: One or more Argo CD applications have stayed Degraded for over 5 minutes.
+
+    - alert: WorkflowFailureRatioHigh
+      expr: |
+        (
+          sum(rate(argo_workflows_count{phase="Failed"}[15m]))
+          /
+          clamp_min(sum(rate(argo_workflows_count{phase=~"Succeeded|Failed|Error"}[15m])), 0.001)
+        ) > 0.20
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: Workflow failure ratio is elevated
+        description: Argo Workflow failure ratio exceeded 20% over the past 15 minutes.
+
+    - alert: KServe5xxRateHigh
+      expr: |
+        (
+          sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace=~"kserve|knative-serving|ml-team-.*",response_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace=~"kserve|knative-serving|ml-team-.*"}[5m])), 0.001)
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: Inference 5xx rate is high
+        description: 5xx response ratio exceeded 5% in the KServe/Knative inference path for over 5 minutes.
+
+    - alert: InferenceLatencyP95High
+      expr: |
+        histogram_quantile(
+          0.95,
+          sum by (le) (
+            rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_workload_namespace=~"kserve|knative-serving|ml-team-.*"}[10m])
+          )
+        ) > 2000
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: Inference p95 latency is elevated
+        description: Inference request p95 latency exceeded 2000ms for over 10 minutes.
+
+    - alert: CriticalNamespaceCrashLoop
+      expr: max by (namespace, pod, container) (kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff",namespace=~"argocd|argo|istio-system|knative-serving|kserve|minio|ml-team-.*"}) > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: CrashLoopBackOff in critical namespace
+        description: A pod has been in CrashLoopBackOff for over 5 minutes in a critical namespace.
+
+    - alert: MinioUnavailable
+      expr: sum(kube_deployment_status_replicas_available{namespace="minio",deployment="minio"}) < 1
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: MinIO is unavailable
+        description: MinIO deployment has no available replicas for over 5 minutes.
+
+    - alert: CriticalScrapeTargetDown
+      expr: sum by (job, namespace, instance) (up{namespace=~"argocd|argo|kserve|knative-serving|minio|ml-team-.*"} == 0) > 0
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: Scrape target down
+        description: A Prometheus scrape target in a critical namespace has been down for over 10 minutes.

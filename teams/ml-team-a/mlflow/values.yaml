@@ -1,0 +1,25 @@
+serviceAccount:
+  create: true
+  name: mlflow-runtime
+
+artifactRoot:
+  s3:
+    enabled: true
+    bucket: mlflow-ml-team-a
+    path: artifacts
+    existingSecret:
+      name: mlflow-s3-credentials
+      keyOfAccessKeyId: MINIO_ACCESS_KEY
+      keyOfSecretAccessKey: MINIO_SECRET_KEY
+
+extraSecretNamesForEnvFrom:
+- mlflow-s3-credentials
+
+extraVolumes:
+- name: mlflow-data
+  persistentVolumeClaim:
+    claimName: mlflow-data
+
+extraVolumeMounts:
+- name: mlflow-data
+  mountPath: /mlflow/data

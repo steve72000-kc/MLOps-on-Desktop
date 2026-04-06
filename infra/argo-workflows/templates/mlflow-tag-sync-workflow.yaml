@@ -1,0 +1,866 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: mlflow-tag-sync
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  entrypoint: sync
+  podMetadata:
+    annotations:
+      sidecar.istio.io/inject: "true"
+      proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+  arguments:
+    parameters:
+    - name: tenant
+      value: ""
+    - name: namespace
+      value: ""
+    - name: registered_model
+      value: ""
+    - name: alias
+      value: champion
+    - name: trace_id
+      value: ""
+    - name: url_scheme
+      value: http
+    - name: public_domain
+      value: ai-ml.local
+    - name: challenger_mode
+      value: status-only
+    - name: scripts_configmap
+      value: mlflow-tag-sync-scripts
+    - name: mlflow_secret_name
+      value: mlflow-s3-credentials
+    - name: git_secret_name
+      value: mlflow-sync-git-credentials
+    - name: git_default_branch
+      value: auto
+    - name: dry_run_enabled
+      value: "true"
+    - name: policy_command
+      value: ""
+  templates:
+  - name: sync
+    inputs:
+      parameters:
+      - name: tenant
+      - name: namespace
+      - name: registered_model
+      - name: alias
+      - name: trace_id
+      - name: url_scheme
+      - name: public_domain
+      - name: challenger_mode
+      - name: scripts_configmap
+      - name: mlflow_secret_name
+      - name: git_secret_name
+      - name: git_default_branch
+      - name: dry_run_enabled
+      - name: policy_command
+    steps:
+    - - name: resolve
+        template: resolve-alias-and-intent
+        arguments:
+          parameters:
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: alias
+            value: "{{inputs.parameters.alias}}"
+          - name: trace_id
+            value: "{{inputs.parameters.trace_id}}"
+          - name: scripts_configmap
+            value: "{{inputs.parameters.scripts_configmap}}"
+          - name: mlflow_secret_name
+            value: "{{inputs.parameters.mlflow_secret_name}}"
+    - - name: state-gate
+        template: check-idempotency
+        arguments:
+          parameters:
+          - name: resolve_status
+            value: "{{steps.resolve.outputs.parameters.sync_status}}"
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: alias
+            value: "{{inputs.parameters.alias}}"
+          - name: model_version
+            value: "{{steps.resolve.outputs.parameters.model_version}}"
+          - name: intent_hash
+            value: "{{steps.resolve.outputs.parameters.intent_hash}}"
+    - - name: decide-deploy
+        template: decide-deploy
+        arguments:
+          parameters:
+          - name: resolve_status
+            value: "{{steps.resolve.outputs.parameters.sync_status}}"
+          - name: alias
+            value: "{{inputs.parameters.alias}}"
+          - name: challenger_mode
+            value: "{{inputs.parameters.challenger_mode}}"
+    - - name: status-accepted
+        template: status-accepted
+        arguments:
+          parameters:
+          - name: resolve_status
+            value: "{{steps.resolve.outputs.parameters.sync_status}}"
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: model_version
+            value: "{{steps.resolve.outputs.parameters.model_version}}"
+          - name: trace_id
+            value: "{{steps.resolve.outputs.parameters.trace_id}}"
+          - name: scripts_configmap
+            value: "{{inputs.parameters.scripts_configmap}}"
+          - name: mlflow_secret_name
+            value: "{{inputs.parameters.mlflow_secret_name}}"
+    - - name: render
+        template: render-manifest
+        arguments:
+          parameters:
+          - name: tenant
+            value: "{{inputs.parameters.tenant}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+          - name: resolve_status
+            value: "{{steps.resolve.outputs.parameters.sync_status}}"
+          - name: state_changed
+            value: "{{steps.state-gate.outputs.parameters.changed}}"
+          - name: deploy_enabled
+            value: "{{steps.decide-deploy.outputs.parameters.deploy_enabled}}"
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: alias
+            value: "{{inputs.parameters.alias}}"
+          - name: trace_id
+            value: "{{steps.resolve.outputs.parameters.trace_id}}"
+          - name: resolved_version
+            value: "{{steps.resolve.outputs.parameters.model_version}}"
+          - name: intent_hash
+            value: "{{steps.resolve.outputs.parameters.intent_hash}}"
+          - name: intent_json_b64
+            value: "{{steps.resolve.outputs.parameters.intent_json_b64}}"
+          - name: scripts_configmap
+            value: "{{inputs.parameters.scripts_configmap}}"
+          - name: mlflow_secret_name
+            value: "{{inputs.parameters.mlflow_secret_name}}"
+    - - name: status-rendered
+        template: status-rendered
+        arguments:
+          parameters:
+          - name: render_status
+            value: "{{steps.render.outputs.parameters.render_status}}"
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: model_version
+            value: "{{steps.resolve.outputs.parameters.model_version}}"
+          - name: trace_id
+            value: "{{steps.resolve.outputs.parameters.trace_id}}"
+          - name: scripts_configmap
+            value: "{{inputs.parameters.scripts_configmap}}"
+          - name: mlflow_secret_name
+            value: "{{inputs.parameters.mlflow_secret_name}}"
+    - - name: validate
+        template: validate-manifest
+        arguments:
+          parameters:
+          - name: tenant
+            value: "{{inputs.parameters.tenant}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+          - name: render_status
+            value: "{{steps.render.outputs.parameters.render_status}}"
+          - name: manifest_b64
+            value: "{{steps.render.outputs.parameters.manifest_b64}}"
+          - name: dry_run_enabled
+            value: "{{inputs.parameters.dry_run_enabled}}"
+          - name: policy_command
+            value: "{{inputs.parameters.policy_command}}"
+    - - name: writeback
+        template: writeback-manifest
+        arguments:
+          parameters:
+          - name: validate_status
+            value: "{{steps.validate.outputs.parameters.validate_status}}"
+          - name: tenant
+            value: "{{inputs.parameters.tenant}}"
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: alias
+            value: "{{inputs.parameters.alias}}"
+          - name: trace_id
+            value: "{{steps.resolve.outputs.parameters.trace_id}}"
+          - name: resolved_version
+            value: "{{steps.resolve.outputs.parameters.model_version}}"
+          - name: intent_hash
+            value: "{{steps.resolve.outputs.parameters.intent_hash}}"
+          - name: intent_name
+            value: "{{steps.resolve.outputs.parameters.intent_name}}"
+          - name: manifest_b64
+            value: "{{steps.render.outputs.parameters.manifest_b64}}"
+          - name: challenger_mode
+            value: "{{inputs.parameters.challenger_mode}}"
+          - name: scripts_configmap
+            value: "{{inputs.parameters.scripts_configmap}}"
+          - name: git_secret_name
+            value: "{{inputs.parameters.git_secret_name}}"
+          - name: git_default_branch
+            value: "{{inputs.parameters.git_default_branch}}"
+    - - name: persist-state
+        template: persist-idempotency-state
+        arguments:
+          parameters:
+          - name: resolve_status
+            value: "{{steps.resolve.outputs.parameters.sync_status}}"
+          - name: state_changed
+            value: "{{steps.state-gate.outputs.parameters.changed}}"
+          - name: deploy_enabled
+            value: "{{steps.decide-deploy.outputs.parameters.deploy_enabled}}"
+          - name: writeback_status
+            value: "{{steps.writeback.outputs.parameters.writeback_status}}"
+          - name: state_key
+            value: "{{steps.state-gate.outputs.parameters.state_key}}"
+          - name: state_value
+            value: "{{steps.state-gate.outputs.parameters.state_value}}"
+    - - name: finalize
+        template: finalize-status
+        arguments:
+          parameters:
+          - name: registered_model
+            value: "{{inputs.parameters.registered_model}}"
+          - name: alias
+            value: "{{inputs.parameters.alias}}"
+          - name: model_version
+            value: "{{steps.resolve.outputs.parameters.model_version}}"
+          - name: intent_name
+            value: "{{steps.resolve.outputs.parameters.intent_name}}"
+          - name: trace_id
+            value: "{{steps.resolve.outputs.parameters.trace_id}}"
+          - name: tenant
+            value: "{{inputs.parameters.tenant}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+          - name: url_scheme
+            value: "{{inputs.parameters.url_scheme}}"
+          - name: public_domain
+            value: "{{inputs.parameters.public_domain}}"
+          - name: resolve_status
+            value: "{{steps.resolve.outputs.parameters.sync_status}}"
+          - name: resolve_reason
+            value: "{{steps.resolve.outputs.parameters.reason}}"
+          - name: state_changed
+            value: "{{steps.state-gate.outputs.parameters.changed}}"
+          - name: deploy_enabled
+            value: "{{steps.decide-deploy.outputs.parameters.deploy_enabled}}"
+          - name: deploy_reason
+            value: "{{steps.decide-deploy.outputs.parameters.reason}}"
+          - name: render_status
+            value: "{{steps.render.outputs.parameters.render_status}}"
+          - name: render_reason
+            value: "{{steps.render.outputs.parameters.reason}}"
+          - name: validate_status
+            value: "{{steps.validate.outputs.parameters.validate_status}}"
+          - name: validate_reason
+            value: "{{steps.validate.outputs.parameters.reason}}"
+          - name: writeback_status
+            value: "{{steps.writeback.outputs.parameters.writeback_status}}"
+          - name: writeback_reason
+            value: "{{steps.writeback.outputs.parameters.reason}}"
+          - name: commit_sha
+            value: "{{steps.writeback.outputs.parameters.commit_sha}}"
+          - name: scripts_configmap
+            value: "{{inputs.parameters.scripts_configmap}}"
+          - name: mlflow_secret_name
+            value: "{{inputs.parameters.mlflow_secret_name}}"
+
+  - name: resolve-alias-and-intent
+    inputs:
+      parameters:
+      - name: registered_model
+      - name: alias
+      - name: trace_id
+      - name: scripts_configmap
+      - name: mlflow_secret_name
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [python3, /opt/workflow-scripts/resolve_alias_and_intent.py]
+      args:
+      - --registered-model
+      - "{{inputs.parameters.registered_model}}"
+      - --alias
+      - "{{inputs.parameters.alias}}"
+      - --trace-id
+      - "{{inputs.parameters.trace_id}}"
+      - --output-dir
+      - /tmp/outputs
+      envFrom:
+      - secretRef:
+          name: "{{inputs.parameters.mlflow_secret_name}}"
+      env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: "{{inputs.parameters.mlflow_secret_name}}"
+            key: MINIO_ACCESS_KEY
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: "{{inputs.parameters.mlflow_secret_name}}"
+            key: MINIO_SECRET_KEY
+      - name: MLFLOW_S3_ENDPOINT_URL
+        valueFrom:
+          secretKeyRef:
+            name: "{{inputs.parameters.mlflow_secret_name}}"
+            key: MLFLOW_S3_ENDPOINT_URL
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+    outputs:
+      parameters:
+      - name: sync_status
+        valueFrom:
+          path: /tmp/outputs/sync_status
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+      - name: trace_id
+        valueFrom:
+          path: /tmp/outputs/trace_id
+      - name: model_version
+        valueFrom:
+          path: /tmp/outputs/model_version
+      - name: run_id
+        valueFrom:
+          path: /tmp/outputs/run_id
+      - name: source
+        valueFrom:
+          path: /tmp/outputs/source
+      - name: intent_hash
+        valueFrom:
+          path: /tmp/outputs/intent_hash
+      - name: intent_json_b64
+        valueFrom:
+          path: /tmp/outputs/intent_json_b64
+      - name: intent_name
+        valueFrom:
+          path: /tmp/outputs/intent_name
+
+  - name: check-idempotency
+    inputs:
+      parameters:
+      - name: resolve_status
+      - name: registered_model
+      - name: alias
+      - name: model_version
+      - name: intent_hash
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "check-idempotency start model={{inputs.parameters.registered_model}} alias={{inputs.parameters.alias}} resolve_status={{inputs.parameters.resolve_status}}"
+        mkdir -p /tmp/outputs
+        changed="false"
+        reason="resolve_not_accepted"
+        state_key=""
+        state_value=""
+
+        if [ "{{inputs.parameters.resolve_status}}" = "accepted" ]; then
+          reason="evaluated_no_cache"
+          raw_key="{{inputs.parameters.registered_model}}|{{inputs.parameters.alias}}"
+          state_key="sync-$(printf '%s' "$raw_key" | sha256sum | awk '{print substr($1,1,32)}')"
+          state_value="{{inputs.parameters.registered_model}}|{{inputs.parameters.alias}}|{{inputs.parameters.model_version}}|{{inputs.parameters.intent_hash}}"
+          # Temporarily bypass cluster state cache until kubectl runtime dependency is hardened.
+          changed="true"
+        fi
+
+        printf '%s' "$changed" > /tmp/outputs/changed
+        printf '%s' "$reason" > /tmp/outputs/reason
+        printf '%s' "$state_key" > /tmp/outputs/state_key
+        printf '%s' "$state_value" > /tmp/outputs/state_value
+        printf '{"changed":"%s","reason":"%s"}\n' "$changed" "$reason"
+    outputs:
+      parameters:
+      - name: changed
+        valueFrom:
+          path: /tmp/outputs/changed
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+      - name: state_key
+        valueFrom:
+          path: /tmp/outputs/state_key
+      - name: state_value
+        valueFrom:
+          path: /tmp/outputs/state_value
+
+  - name: decide-deploy
+    inputs:
+      parameters:
+      - name: resolve_status
+      - name: alias
+      - name: challenger_mode
+    container:
+      image: alpine:3.20
+      command: [sh, -ec]
+      args:
+      - |
+        echo "decide-deploy start alias={{inputs.parameters.alias}} challenger_mode={{inputs.parameters.challenger_mode}} resolve_status={{inputs.parameters.resolve_status}}"
+        mkdir -p /tmp/outputs
+        deploy_enabled="false"
+        reason="resolve_not_accepted"
+
+        if [ "{{inputs.parameters.resolve_status}}" = "accepted" ]; then
+          if [ "{{inputs.parameters.alias}}" = "challenger" ] && [ "{{inputs.parameters.challenger_mode}}" = "status-only" ]; then
+            deploy_enabled="false"
+            reason="challenger_status_only"
+          else
+            deploy_enabled="true"
+            reason="deploy"
+          fi
+        fi
+
+        printf '%s' "$deploy_enabled" > /tmp/outputs/deploy_enabled
+        printf '%s' "$reason" > /tmp/outputs/reason
+        printf '{"deploy_enabled":"%s","reason":"%s"}\n' "$deploy_enabled" "$reason"
+    outputs:
+      parameters:
+      - name: deploy_enabled
+        valueFrom:
+          path: /tmp/outputs/deploy_enabled
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+
+  - name: status-accepted
+    inputs:
+      parameters:
+      - name: resolve_status
+      - name: registered_model
+      - name: model_version
+      - name: trace_id
+      - name: scripts_configmap
+      - name: mlflow_secret_name
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "status-accepted start model={{inputs.parameters.registered_model}} version={{inputs.parameters.model_version}} resolve_status={{inputs.parameters.resolve_status}}"
+        if [ "{{inputs.parameters.resolve_status}}" != "accepted" ]; then
+          echo "Skipping accepted status update"
+          exit 0
+        fi
+
+        python3 /opt/workflow-scripts/update_mlflow_status.py \
+          --registered-model "{{inputs.parameters.registered_model}}" \
+          --model-version "{{inputs.parameters.model_version}}" \
+          --sync-status accepted \
+          --reason accepted \
+          --trace-id "{{inputs.parameters.trace_id}}"
+        echo "status-accepted done"
+      envFrom:
+      - secretRef:
+          name: "{{inputs.parameters.mlflow_secret_name}}"
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+
+  - name: render-manifest
+    inputs:
+      parameters:
+      - name: tenant
+      - name: namespace
+      - name: resolve_status
+      - name: state_changed
+      - name: deploy_enabled
+      - name: registered_model
+      - name: alias
+      - name: trace_id
+      - name: resolved_version
+      - name: intent_hash
+      - name: intent_json_b64
+      - name: scripts_configmap
+      - name: mlflow_secret_name
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "render-manifest start model={{inputs.parameters.registered_model}} alias={{inputs.parameters.alias}} resolve_status={{inputs.parameters.resolve_status}} state_changed={{inputs.parameters.state_changed}} deploy_enabled={{inputs.parameters.deploy_enabled}}"
+        mkdir -p /tmp/outputs
+        if [ "{{inputs.parameters.resolve_status}}" != "accepted" ] || [ "{{inputs.parameters.state_changed}}" != "true" ] || [ "{{inputs.parameters.deploy_enabled}}" != "true" ]; then
+          echo "render-manifest skipped"
+          printf '%s' "skipped" > /tmp/outputs/render_status
+          printf '%s' "skipped" > /tmp/outputs/reason
+          printf '%s' "" > /tmp/outputs/manifest_b64
+          printf '%s' "" > /tmp/outputs/metadata_name
+          exit 0
+        fi
+
+        python3 /opt/workflow-scripts/render_inferenceservice.py \
+          --tenant "{{inputs.parameters.tenant}}" \
+          --namespace "{{inputs.parameters.namespace}}" \
+          --registered-model "{{inputs.parameters.registered_model}}" \
+          --alias "{{inputs.parameters.alias}}" \
+          --resolved-version "{{inputs.parameters.resolved_version}}" \
+          --intent-hash "{{inputs.parameters.intent_hash}}" \
+          --trace-id "{{inputs.parameters.trace_id}}" \
+          --intent-json-b64 "{{inputs.parameters.intent_json_b64}}" \
+          --storage-secret-name "{{inputs.parameters.mlflow_secret_name}}" \
+          --output-dir /tmp/outputs
+        echo "render-manifest result status=$(cat /tmp/outputs/render_status) reason=$(cat /tmp/outputs/reason) name=$(cat /tmp/outputs/metadata_name)"
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+    outputs:
+      parameters:
+      - name: render_status
+        valueFrom:
+          path: /tmp/outputs/render_status
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+      - name: manifest_b64
+        valueFrom:
+          path: /tmp/outputs/manifest_b64
+      - name: metadata_name
+        valueFrom:
+          path: /tmp/outputs/metadata_name
+
+  - name: status-rendered
+    inputs:
+      parameters:
+      - name: render_status
+      - name: registered_model
+      - name: model_version
+      - name: trace_id
+      - name: scripts_configmap
+      - name: mlflow_secret_name
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "status-rendered start model={{inputs.parameters.registered_model}} version={{inputs.parameters.model_version}} render_status={{inputs.parameters.render_status}}"
+        if [ "{{inputs.parameters.render_status}}" != "accepted" ]; then
+          echo "Skipping rendered status update"
+          exit 0
+        fi
+
+        python3 /opt/workflow-scripts/update_mlflow_status.py \
+          --registered-model "{{inputs.parameters.registered_model}}" \
+          --model-version "{{inputs.parameters.model_version}}" \
+          --sync-status rendered \
+          --reason rendered \
+          --trace-id "{{inputs.parameters.trace_id}}"
+        echo "status-rendered done"
+      envFrom:
+      - secretRef:
+          name: "{{inputs.parameters.mlflow_secret_name}}"
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+
+  - name: validate-manifest
+    inputs:
+      parameters:
+      - name: tenant
+      - name: namespace
+      - name: render_status
+      - name: manifest_b64
+      - name: dry_run_enabled
+      - name: policy_command
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "validate-manifest start tenant={{inputs.parameters.tenant}} namespace={{inputs.parameters.namespace}} render_status={{inputs.parameters.render_status}} dry_run={{inputs.parameters.dry_run_enabled}}"
+        mkdir -p /tmp/outputs
+        validate_status="skipped"
+        reason="skipped"
+
+        if [ "{{inputs.parameters.render_status}}" = "accepted" ]; then
+          validate_status="accepted"
+          reason="validated"
+
+          manifest_path="/tmp/manifest.yaml"
+          printf '%s' "{{inputs.parameters.manifest_b64}}" | base64 -d > "$manifest_path"
+
+          if [ "{{inputs.parameters.dry_run_enabled}}" = "true" ]; then
+            if command -v kubectl >/dev/null 2>&1; then
+              if ! kubectl apply --dry-run=server -f "$manifest_path" -n "{{inputs.parameters.namespace}}" >/tmp/dry-run.log 2>&1; then
+                echo "validate-manifest dry-run failed"
+                tail -n 100 /tmp/dry-run.log || true
+                validate_status="failed"
+                reason="dry_run_failed"
+                printf '%s' "$validate_status" > /tmp/outputs/validate_status
+                printf '%s' "$reason" > /tmp/outputs/reason
+                exit 0
+              fi
+            else
+              reason="validated_no_dry_run"
+            fi
+          fi
+
+          if [ -n "{{inputs.parameters.policy_command}}" ]; then
+            if ! MANIFEST_PATH="$manifest_path" sh -ec "{{inputs.parameters.policy_command}}" >/tmp/policy.log 2>&1; then
+              echo "validate-manifest policy denied"
+              tail -n 100 /tmp/policy.log || true
+              validate_status="failed"
+              reason="policy_denied"
+              printf '%s' "$validate_status" > /tmp/outputs/validate_status
+              printf '%s' "$reason" > /tmp/outputs/reason
+              exit 0
+            fi
+          fi
+
+          validate_status="accepted"
+        fi
+
+        printf '%s' "$validate_status" > /tmp/outputs/validate_status
+        printf '%s' "$reason" > /tmp/outputs/reason
+        echo "validate-manifest result status=$validate_status reason=$reason"
+    outputs:
+      parameters:
+      - name: validate_status
+        valueFrom:
+          path: /tmp/outputs/validate_status
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+
+  - name: writeback-manifest
+    inputs:
+      parameters:
+      - name: validate_status
+      - name: tenant
+      - name: registered_model
+      - name: alias
+      - name: trace_id
+      - name: resolved_version
+      - name: intent_hash
+      - name: intent_name
+      - name: manifest_b64
+      - name: challenger_mode
+      - name: scripts_configmap
+      - name: git_secret_name
+      - name: git_default_branch
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: alpine/git:2.47.2
+      command: [sh, -ec]
+      args:
+      - |
+        echo "writeback-manifest start model={{inputs.parameters.registered_model}} alias={{inputs.parameters.alias}} validate_status={{inputs.parameters.validate_status}}"
+        mkdir -p /tmp/outputs
+
+        if [ "{{inputs.parameters.validate_status}}" != "accepted" ]; then
+          echo "writeback-manifest skipped"
+          printf '%s' "skipped" > /tmp/outputs/writeback_status
+          printf '%s' "skipped" > /tmp/outputs/reason
+          printf '%s' "" > /tmp/outputs/commit_sha
+          printf '%s' "" > /tmp/outputs/manifest_path
+          exit 0
+        fi
+
+        /opt/workflow-scripts/git_writeback.sh \
+          --tenant "{{inputs.parameters.tenant}}" \
+          --registered-model "{{inputs.parameters.registered_model}}" \
+          --alias "{{inputs.parameters.alias}}" \
+          --trace-id "{{inputs.parameters.trace_id}}" \
+          --resolved-version "{{inputs.parameters.resolved_version}}" \
+          --intent-hash "{{inputs.parameters.intent_hash}}" \
+          --intent-name "{{inputs.parameters.intent_name}}" \
+          --manifest-b64 "{{inputs.parameters.manifest_b64}}" \
+          --default-branch "{{inputs.parameters.git_default_branch}}" \
+          --challenger-mode "{{inputs.parameters.challenger_mode}}" \
+          --output-dir /tmp/outputs
+        echo "writeback-manifest result status=$(cat /tmp/outputs/writeback_status) reason=$(cat /tmp/outputs/reason) commit=$(cat /tmp/outputs/commit_sha) path=$(cat /tmp/outputs/manifest_path)"
+      envFrom:
+      - secretRef:
+          name: "{{inputs.parameters.git_secret_name}}"
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+    outputs:
+      parameters:
+      - name: writeback_status
+        valueFrom:
+          path: /tmp/outputs/writeback_status
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+      - name: commit_sha
+        valueFrom:
+          path: /tmp/outputs/commit_sha
+      - name: manifest_path
+        valueFrom:
+          path: /tmp/outputs/manifest_path
+
+  - name: persist-idempotency-state
+    inputs:
+      parameters:
+      - name: resolve_status
+      - name: state_changed
+      - name: deploy_enabled
+      - name: writeback_status
+      - name: state_key
+      - name: state_value
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "persist-idempotency-state start resolve_status={{inputs.parameters.resolve_status}} state_changed={{inputs.parameters.state_changed}} deploy_enabled={{inputs.parameters.deploy_enabled}} writeback_status={{inputs.parameters.writeback_status}}"
+        mkdir -p /tmp/outputs
+        persist_status="skipped"
+        reason="state_store_disabled"
+
+        printf '%s' "$persist_status" > /tmp/outputs/persist_status
+        printf '%s' "$reason" > /tmp/outputs/reason
+        echo "persist-idempotency-state result status=$persist_status reason=$reason"
+    outputs:
+      parameters:
+      - name: persist_status
+        valueFrom:
+          path: /tmp/outputs/persist_status
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+
+  - name: finalize-status
+    inputs:
+      parameters:
+      - name: registered_model
+      - name: alias
+      - name: model_version
+      - name: intent_name
+      - name: trace_id
+      - name: tenant
+      - name: namespace
+      - name: url_scheme
+      - name: public_domain
+      - name: resolve_status
+      - name: resolve_reason
+      - name: state_changed
+      - name: deploy_enabled
+      - name: deploy_reason
+      - name: render_status
+      - name: render_reason
+      - name: validate_status
+      - name: validate_reason
+      - name: writeback_status
+      - name: writeback_reason
+      - name: commit_sha
+      - name: scripts_configmap
+      - name: mlflow_secret_name
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      command: [sh, -ec]
+      args:
+      - |
+        echo "finalize-status start model={{inputs.parameters.registered_model}} alias={{inputs.parameters.alias}} version={{inputs.parameters.model_version}}"
+        mkdir -p /tmp/outputs
+        sync_status="failed"
+        reason="unknown_error"
+        commit_sha=""
+        deployment_url=""
+
+        if [ "{{inputs.parameters.resolve_status}}" != "accepted" ]; then
+          sync_status="failed"
+          reason="{{inputs.parameters.resolve_reason}}"
+        elif [ "{{inputs.parameters.state_changed}}" != "true" ]; then
+          sync_status="applied"
+          reason="no_change"
+        elif [ "{{inputs.parameters.deploy_enabled}}" != "true" ]; then
+          sync_status="applied"
+          reason="{{inputs.parameters.deploy_reason}}"
+        elif [ "{{inputs.parameters.render_status}}" != "accepted" ]; then
+          sync_status="failed"
+          reason="{{inputs.parameters.render_reason}}"
+        elif [ "{{inputs.parameters.validate_status}}" != "accepted" ]; then
+          sync_status="failed"
+          reason="{{inputs.parameters.validate_reason}}"
+        elif [ "{{inputs.parameters.writeback_status}}" = "failed" ]; then
+          sync_status="failed"
+          reason="{{inputs.parameters.writeback_reason}}"
+        elif [ "{{inputs.parameters.writeback_status}}" = "applied" ] || [ "{{inputs.parameters.writeback_status}}" = "noop" ]; then
+          sync_status="applied"
+          reason="{{inputs.parameters.writeback_reason}}"
+          commit_sha="{{inputs.parameters.commit_sha}}"
+        else
+          sync_status="failed"
+          reason="unknown_state"
+        fi
+
+        if [ "$sync_status" = "applied" ] && [ "{{inputs.parameters.deploy_enabled}}" = "true" ] && [ -n "{{inputs.parameters.intent_name}}" ]; then
+          deployment_url="{{inputs.parameters.url_scheme}}://{{inputs.parameters.intent_name}}.{{inputs.parameters.namespace}}.{{inputs.parameters.public_domain}}"
+        fi
+        echo "finalize-status computed status=$sync_status reason=$reason commit=$commit_sha deployment_url=$deployment_url"
+
+        python3 /opt/workflow-scripts/update_mlflow_status.py \
+          --registered-model "{{inputs.parameters.registered_model}}" \
+          --model-version "{{inputs.parameters.model_version}}" \
+          --sync-status "$sync_status" \
+          --reason "$reason" \
+          --trace-id "{{inputs.parameters.trace_id}}" \
+          --commit-sha "$commit_sha" \
+          --deployment-url "$deployment_url"
+        echo "finalize-status mlflow tag update done"
+
+        printf '%s' "$sync_status" > /tmp/outputs/final_sync_status
+        printf '%s' "$reason" > /tmp/outputs/final_reason
+        printf '%s' "$commit_sha" > /tmp/outputs/final_commit
+      envFrom:
+      - secretRef:
+          name: "{{inputs.parameters.mlflow_secret_name}}"
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+    outputs:
+      parameters:
+      - name: final_sync_status
+        valueFrom:
+          path: /tmp/outputs/final_sync_status
+      - name: final_reason
+        valueFrom:
+          path: /tmp/outputs/final_reason
+      - name: final_commit
+        valueFrom:
+          path: /tmp/outputs/final_commit

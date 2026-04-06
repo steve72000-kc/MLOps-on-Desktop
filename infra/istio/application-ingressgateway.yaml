@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-ingressgateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-8"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: gateway
+    targetRevision: 1.24.2
+    helm:
+      releaseName: istio-ingressgateway
+      skipSchemaValidation: true
+      parameters:
+      - name: service.type
+        value: LoadBalancer
+      - name: service.loadBalancerIP
+        value: 172.29.0.203
+      - name: autoscaling.enabled
+        value: "false"
+      - name: replicaCount
+        value: "1"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

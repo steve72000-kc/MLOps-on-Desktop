@@ -1,0 +1,80 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: ClusterServingRuntime
+metadata:
+  name: kserve-mlserver-custom
+spec:
+  disabled: false
+  annotations:
+    prometheus.kserve.io/port: "8080"
+    prometheus.kserve.io/path: /metrics
+  supportedModelFormats:
+  - name: sklearn
+    version: "0"
+    autoSelect: false
+  - name: sklearn
+    version: "1"
+    autoSelect: false
+  - name: xgboost
+    version: "1"
+    autoSelect: false
+  - name: xgboost
+    version: "2"
+    autoSelect: false
+  - name: lightgbm
+    version: "3"
+    autoSelect: false
+  - name: lightgbm
+    version: "4"
+    autoSelect: false
+  - name: mlflow
+    version: "1"
+    autoSelect: false
+  - name: mlflow
+    version: "2"
+    autoSelect: false
+  protocolVersions:
+  - v2
+  containers:
+  - name: kserve-container
+    image: docker.io/seldonio/mlserver:1.5.0
+    env:
+    - name: MLSERVER_MODEL_IMPLEMENTATION
+      value: "{{.Labels.modelClass}}"
+    - name: MLSERVER_MODEL_NAME
+      value: "{{.Name}}"
+    - name: MLSERVER_MODEL_URI
+      value: /mnt/models
+    - name: MLSERVER_HTTP_PORT
+      value: "8080"
+    - name: MLSERVER_GRPC_PORT
+      value: "9000"
+    - name: MODELS_DIR
+      value: /mnt/models
+    readinessProbe:
+      httpGet:
+        path: /v2/health/ready
+        port: 8080
+      timeoutSeconds: 5
+      periodSeconds: 10
+      failureThreshold: 6
+    startupProbe:
+      httpGet:
+        path: /v2/health/live
+        port: 8080
+      timeoutSeconds: 5
+      periodSeconds: 5
+      failureThreshold: 24
+    securityContext:
+      allowPrivilegeEscalation: false
+      privileged: false
+      runAsNonRoot: true
+      capabilities:
+        drop:
+        - ALL
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi

@@ -1,0 +1,40 @@
+strategy:
+  type: Recreate
+
+backendStore:
+  defaultSqlitePath: /mlflow/data/mlflow.db
+
+artifactRoot:
+  proxiedArtifactStorage: true
+  # Team overlays switch this to tenant-scoped MinIO S3 buckets.
+  defaultArtifactsDestination: /mlflow/data/mlartifacts
+
+extraEnvVars:
+  MLFLOW_SERVER_ALLOWED_HOSTS: "*"
+  MLFLOW_SERVER_X_FRAME_OPTIONS: "SAMEORIGIN"
+
+extraArgs:
+  workers: "1"
+
+# resources:
+#   requests:
+#     cpu: 100m
+#     memory: 256Mi
+#   limits:
+#     cpu: 500m
+#     memory: 1Gi
+
+podAnnotations:
+  sidecar.istio.io/inject: "true"
+
+livenessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 10
+
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 10
+  failureThreshold: 10

@@ -1,0 +1,369 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: mlflow-tag-sync-hub
+  namespace: argo
+spec:
+  schedule: "*/5 * * * *"
+  timezone: America/New_York
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    serviceAccountName: mlflow-tag-sync-dispatcher
+    entrypoint: dispatch
+    podMetadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+    templates:
+    - name: dispatch
+      steps:
+      - - name: discover-tenants
+          template: discover-tenants
+      - - name: dispatch-tenant
+          template: dispatch-tenant
+          arguments:
+            parameters:
+            - name: tenant
+              value: "{{item.tenant}}"
+            - name: namespace
+              value: "{{item.namespace}}"
+            - name: tracking_uri
+              value: "{{item.tracking_uri}}"
+            - name: alias
+              value: "{{item.alias}}"
+            - name: challenger_mode
+              value: "{{item.challenger_mode}}"
+            - name: scripts_configmap
+              value: "{{item.scripts_configmap}}"
+            - name: mlflow_secret_name
+              value: "{{item.mlflow_secret_name}}"
+            - name: git_secret_name
+              value: "{{item.git_secret_name}}"
+            - name: git_default_branch
+              value: "{{item.git_default_branch}}"
+          withParam: "{{steps.discover-tenants.outputs.parameters.tenants_json}}"
+    - name: discover-tenants
+      script:
+        image: python:3.12-alpine
+        command: [python3]
+        source: |
+          import json
+          import ssl
+          import sys
+          import urllib.parse
+          import urllib.request
+
+          token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+          ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          api_url = "https://kubernetes.default.svc/api/v1/configmaps"
+          label_selector = urllib.parse.quote("platform.ai-ml/tenant-config=true", safe="")
+
+          with open(token_path, "r", encoding="utf-8") as f:
+              token = f.read().strip()
+
+          request = urllib.request.Request(
+              f"{api_url}?labelSelector={label_selector}",
+              headers={"Authorization": f"Bearer {token}"},
+          )
+          ssl_context = ssl.create_default_context(cafile=ca_path)
+
+          with urllib.request.urlopen(request, context=ssl_context, timeout=15) as response:
+              payload = json.load(response)
+
+          items = []
+          for configmap in sorted(
+              payload.get("items", []),
+              key=lambda item: (
+                  item.get("metadata", {}).get("namespace", ""),
+                  item.get("metadata", {}).get("name", ""),
+              ),
+          ):
+              metadata = configmap.get("metadata", {})
+              data = configmap.get("data", {}) or {}
+              tenant = (data.get("tenant") or metadata.get("labels", {}).get("platform.ai-ml/tenant") or metadata.get("namespace", "")).strip()
+              namespace = (data.get("namespace") or metadata.get("namespace", "")).strip()
+              tracking_uri = (data.get("trackingUri") or "").strip()
+              enabled = str(data.get("syncEnabled", "true")).strip().lower()
+
+              if enabled in {"false", "0", "no"}:
+                  continue
+
+              if not tenant or not namespace or not tracking_uri:
+                  print(
+                      f"skip_invalid_tenant_config namespace={metadata.get('namespace', '')} name={metadata.get('name', '')}",
+                      file=sys.stderr,
+                      flush=True,
+                  )
+                  continue
+
+              items.append(
+                  {
+                      "tenant": tenant,
+                      "namespace": namespace,
+                      "tracking_uri": tracking_uri,
+                      "alias": (data.get("syncAlias") or "champion").strip(),
+                      "challenger_mode": (data.get("challengerMode") or "status-only").strip(),
+                      "scripts_configmap": (data.get("scriptsConfigMapName") or "mlflow-tag-sync-scripts").strip(),
+                      "mlflow_secret_name": (data.get("mlflowSecretName") or "mlflow-s3-credentials").strip(),
+                      "git_secret_name": (data.get("gitSecretName") or "mlflow-sync-git-credentials").strip(),
+                      "git_default_branch": (data.get("gitDefaultBranch") or "auto").strip(),
+                  }
+              )
+
+          print(f"discovered_tenants={items}", flush=True)
+          with open("/tmp/tenant-configs.json", "w", encoding="utf-8") as f:
+              json.dump(items, f)
+      outputs:
+        parameters:
+        - name: tenants_json
+          valueFrom:
+            path: /tmp/tenant-configs.json
+    - name: dispatch-tenant
+      inputs:
+        parameters:
+        - name: tenant
+        - name: namespace
+        - name: tracking_uri
+        - name: alias
+        - name: challenger_mode
+        - name: scripts_configmap
+        - name: mlflow_secret_name
+        - name: git_secret_name
+        - name: git_default_branch
+      steps:
+      - - name: discover-models
+          template: discover-models
+          arguments:
+            parameters:
+            - name: tenant
+              value: "{{inputs.parameters.tenant}}"
+            - name: alias
+              value: "{{inputs.parameters.alias}}"
+            - name: tracking_uri
+              value: "{{inputs.parameters.tracking_uri}}"
+      - - name: submit-tenant-prune
+          template: submit-prune-workflow
+          arguments:
+            parameters:
+            - name: tenant
+              value: "{{inputs.parameters.tenant}}"
+            - name: namespace
+              value: "{{inputs.parameters.namespace}}"
+            - name: alias
+              value: "{{inputs.parameters.alias}}"
+            - name: registered_models_json
+              value: "{{steps.discover-models.outputs.parameters.registered_models_json}}"
+            - name: scripts_configmap
+              value: "{{inputs.parameters.scripts_configmap}}"
+            - name: git_secret_name
+              value: "{{inputs.parameters.git_secret_name}}"
+            - name: git_default_branch
+              value: "{{inputs.parameters.git_default_branch}}"
+      - - name: submit-tenant-sync
+          template: submit-sync-workflow
+          arguments:
+            parameters:
+            - name: tenant
+              value: "{{inputs.parameters.tenant}}"
+            - name: namespace
+              value: "{{inputs.parameters.namespace}}"
+            - name: registered_model
+              value: "{{item}}"
+            - name: alias
+              value: "{{inputs.parameters.alias}}"
+            - name: challenger_mode
+              value: "{{inputs.parameters.challenger_mode}}"
+            - name: scripts_configmap
+              value: "{{inputs.parameters.scripts_configmap}}"
+            - name: mlflow_secret_name
+              value: "{{inputs.parameters.mlflow_secret_name}}"
+            - name: git_secret_name
+              value: "{{inputs.parameters.git_secret_name}}"
+            - name: git_default_branch
+              value: "{{inputs.parameters.git_default_branch}}"
+          withParam: "{{steps.discover-models.outputs.parameters.registered_models_json}}"
+    - name: submit-prune-workflow
+      inputs:
+        parameters:
+        - name: tenant
+        - name: namespace
+        - name: alias
+        - name: registered_models_json
+        - name: scripts_configmap
+        - name: git_secret_name
+        - name: git_default_branch
+      resource:
+        action: create
+        manifest: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: Workflow
+          metadata:
+            generateName: mlflow-tag-prune-
+            namespace: {{inputs.parameters.namespace}}
+          spec:
+            serviceAccountName: mlflow-tag-sync
+            workflowTemplateRef:
+              name: mlflow-tag-prune
+              clusterScope: true
+            arguments:
+              parameters:
+              - name: tenant
+                value: "{{inputs.parameters.tenant}}"
+              - name: alias
+                value: "{{inputs.parameters.alias}}"
+              - name: active_models_json
+                value: '{{inputs.parameters.registered_models_json}}'
+              - name: scripts_configmap
+                value: "{{inputs.parameters.scripts_configmap}}"
+              - name: git_secret_name
+                value: "{{inputs.parameters.git_secret_name}}"
+              - name: git_default_branch
+                value: "{{inputs.parameters.git_default_branch}}"
+    - name: discover-models
+      inputs:
+        parameters:
+        - name: tenant
+        - name: alias
+        - name: tracking_uri
+      script:
+        image: ghcr.io/mlflow/mlflow:v2.22.0
+        command: [python3]
+        source: |
+          import json
+          import os
+          import socket
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+          from mlflow import MlflowClient
+          from mlflow.exceptions import RestException
+
+          # Avoid hanging forever when tenant MLflow is unreachable.
+          socket.setdefaulttimeout(15)
+          os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "15")
+
+          tenant = "{{inputs.parameters.tenant}}"
+          alias = "{{inputs.parameters.alias}}"
+          tracking_uri = "{{inputs.parameters.tracking_uri}}"
+
+          def preflight(uri: str, timeout_seconds: int = 15, retries: int = 3) -> None:
+              base = uri.rstrip("/")
+              url = f"{base}/"
+              last_error = None
+              for attempt in range(1, retries + 1):
+                  req = urllib.request.Request(url, method="GET")
+                  try:
+                      with urllib.request.urlopen(req, timeout=timeout_seconds):
+                          return
+                  except urllib.error.HTTPError as exc:
+                      # 4xx still proves reachability.
+                      if 400 <= exc.code < 500:
+                          return
+                      last_error = exc
+                  except Exception as exc:
+                      last_error = exc
+
+                  if attempt < retries:
+                      time.sleep(min(2 * attempt, 5))
+
+              if last_error is not None:
+                  raise last_error
+
+          try:
+              print(f"discover_start tenant={tenant} alias={alias} tracking_uri={tracking_uri}", flush=True)
+              preflight(tracking_uri, timeout_seconds=15, retries=3)
+              print("discover_preflight_ok", flush=True)
+
+              client = MlflowClient(tracking_uri=tracking_uri)
+              models = []
+              page_token = None
+
+              while True:
+                  page = client.search_registered_models(max_results=200, page_token=page_token)
+                  for rm in page:
+                      name = str(getattr(rm, "name", ""))
+                      try:
+                          mv = client.get_model_version_by_alias(name, alias)
+                      except RestException:
+                          continue
+                      except Exception:
+                          continue
+                      tags = dict(getattr(mv, "tags", {}) or {})
+                      mode = str(tags.get("kserve.intent.mode", "")).strip()
+                      has_payload = bool(str(tags.get("kserve.intent.payload", "")).strip())
+                      has_ref = bool(str(tags.get("kserve.intent.ref", "")).strip())
+                      if mode and (has_payload or has_ref):
+                          models.append(name)
+
+                  token = getattr(page, "token", None)
+                  if not token:
+                      break
+                  page_token = token
+
+              models = sorted(set(models))
+              print(f"discovered_models={models}")
+              with open("/tmp/registered_models.json", "w", encoding="utf-8") as f:
+                  f.write(json.dumps(models))
+          except Exception as exc:
+              print(f"discovery_failed tracking_uri={tracking_uri} alias={alias}: {exc}", file=sys.stderr)
+              raise
+      outputs:
+        parameters:
+        - name: registered_models_json
+          valueFrom:
+            path: /tmp/registered_models.json
+    - name: submit-sync-workflow
+      inputs:
+        parameters:
+        - name: tenant
+        - name: namespace
+        - name: registered_model
+        - name: alias
+        - name: challenger_mode
+        - name: scripts_configmap
+        - name: mlflow_secret_name
+        - name: git_secret_name
+        - name: git_default_branch
+      resource:
+        action: create
+        manifest: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: Workflow
+          metadata:
+            generateName: mlflow-tag-sync-
+            namespace: {{inputs.parameters.namespace}}
+          spec:
+            serviceAccountName: mlflow-tag-sync
+            workflowTemplateRef:
+              name: mlflow-tag-sync
+              clusterScope: true
+            arguments:
+              parameters:
+              - name: tenant
+                value: "{{inputs.parameters.tenant}}"
+              - name: namespace
+                value: "{{inputs.parameters.namespace}}"
+              - name: registered_model
+                value: "{{inputs.parameters.registered_model}}"
+              - name: alias
+                value: "{{inputs.parameters.alias}}"
+              - name: trace_id
+                value: "{{workflow.uid}}-{{inputs.parameters.tenant}}-{{inputs.parameters.alias}}"
+              - name: challenger_mode
+                value: "{{inputs.parameters.challenger_mode}}"
+              - name: scripts_configmap
+                value: "{{inputs.parameters.scripts_configmap}}"
+              - name: mlflow_secret_name
+                value: "{{inputs.parameters.mlflow_secret_name}}"
+              - name: git_secret_name
+                value: "{{inputs.parameters.git_secret_name}}"
+              - name: git_default_branch
+                value: "{{inputs.parameters.git_default_branch}}"
+              - name: dry_run_enabled
+                value: "true"
+              - name: policy_command
+                value: ""

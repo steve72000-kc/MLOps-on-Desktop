@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: mlflow-tag-prune
+spec:
+  entrypoint: prune-stale-manifests
+  podMetadata:
+    annotations:
+      sidecar.istio.io/inject: "true"
+      proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+  arguments:
+    parameters:
+    - name: tenant
+      value: ""
+    - name: alias
+      value: champion
+    - name: active_models_json
+      value: "[]"
+    - name: scripts_configmap
+      value: mlflow-tag-sync-scripts
+    - name: git_secret_name
+      value: mlflow-sync-git-credentials
+    - name: git_default_branch
+      value: auto
+  templates:
+  - name: prune-stale-manifests
+    inputs:
+      parameters:
+      - name: tenant
+      - name: alias
+      - name: active_models_json
+      - name: scripts_configmap
+      - name: git_secret_name
+      - name: git_default_branch
+    volumes:
+    - name: scripts
+      configMap:
+        name: "{{inputs.parameters.scripts_configmap}}"
+        defaultMode: 0555
+    container:
+      image: alpine/git:2.47.2
+      command: [sh, -ec]
+      args:
+      - |
+        mkdir -p /tmp/outputs
+        echo "prune-stale-manifests start tenant={{inputs.parameters.tenant}} alias={{inputs.parameters.alias}}"
+        /opt/workflow-scripts/git_prune_manifests.sh \
+          --tenant "{{inputs.parameters.tenant}}" \
+          --alias "{{inputs.parameters.alias}}" \
+          --active-models-json '{{inputs.parameters.active_models_json}}' \
+          --default-branch "{{inputs.parameters.git_default_branch}}" \
+          --output-dir /tmp/outputs
+        status="$(cat /tmp/outputs/prune_status)"
+        reason="$(cat /tmp/outputs/reason)"
+        commit="$(cat /tmp/outputs/commit_sha)"
+        echo "prune-stale-manifests result status=${status} reason=${reason} commit=${commit}"
+        if [ "$status" = "failed" ]; then
+          exit 1
+        fi
+      envFrom:
+      - secretRef:
+          name: "{{inputs.parameters.git_secret_name}}"
+      volumeMounts:
+      - name: scripts
+        mountPath: /opt/workflow-scripts
+        readOnly: true
+    outputs:
+      parameters:
+      - name: prune_status
+        valueFrom:
+          path: /tmp/outputs/prune_status
+      - name: reason
+        valueFrom:
+          path: /tmp/outputs/reason
+      - name: commit_sha
+        valueFrom:
+          path: /tmp/outputs/commit_sha
+      - name: pruned_paths_json
+        valueFrom:
+          path: /tmp/outputs/pruned_paths_json

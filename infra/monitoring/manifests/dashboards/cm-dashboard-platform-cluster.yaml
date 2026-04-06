@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-platform-cluster
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    grafana_folder: Platform
+    argocd.argoproj.io/sync-wave: "30"
+data:
+  platform-cluster-health.json: |-
+    {
+      "title": "Platform / Cluster Health",
+      "uid": "platform-cluster-health",
+      "tags": ["platform", "kubernetes"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Ready Nodes",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Non-Running Pods (Critical NS)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(kube_pod_status_phase{namespace=~\"argocd|argo|istio-system|knative-serving|kserve|minio|ml-team-.*\",phase=~\"Pending|Unknown|Failed\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "CrashLoop Pods (Critical NS)",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(kube_pod_container_status_waiting_reason{reason=\"CrashLoopBackOff\",namespace=~\"argocd|argo|istio-system|knative-serving|kserve|minio|ml-team-.*\"})"}],
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Cluster CPU Cores Used",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\",image!=\"\"}[5m]))"}],
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Container Restarts / 15m",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum by (namespace) (increase(kube_pod_container_status_restarts_total{namespace=~\"argocd|argo|istio-system|knative-serving|kserve|minio|ml-team-.*\"}[15m]))"}],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Working Set Memory by Namespace",
+          "datasource": "Prometheus",
+          "targets": [{"refId": "A", "expr": "sum by (namespace) (container_memory_working_set_bytes{container!=\"\",image!=\"\",namespace=~\"argocd|argo|istio-system|knative-serving|kserve|minio|ml-team-.*\"}) / 1024 / 1024"}],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+        }
+      ]
+    }

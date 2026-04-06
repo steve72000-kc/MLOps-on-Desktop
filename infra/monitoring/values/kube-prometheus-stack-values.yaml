@@ -1,0 +1,192 @@
+defaultRules:
+  create: true
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    retention: 4h
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi
+
+kubeEtcd:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeApiServer:
+  tlsConfig:
+    # Local Kind control-plane endpoints can present certs that do not match
+    # the container IP used for scraping.
+    insecureSkipVerify: true
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: true
+    certManager:
+      enabled: true
+  serviceMonitor:
+    selfMonitor: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 400m
+      memory: 512Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+nodeExporter:
+  enabled: false
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    retention: 4h
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    additionalScrapeConfigs:
+    - job_name: platform-annotated-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_namespace
+        action: keep
+        regex: argocd|argo|istio-system|knative-serving|kserve|minio|ml-team-.*
+      - source_labels:
+        - __meta_kubernetes_pod_label_workflows_argoproj_io_workflow
+        action: drop
+        regex: .+
+      - source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+        action: keep
+        regex: "true"
+      - source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::[0-9]+)?;([0-9]+)
+        replacement: $1:$2
+      - source_labels:
+        - __meta_kubernetes_namespace
+        action: replace
+        target_label: namespace
+      - source_labels:
+        - __meta_kubernetes_pod_name
+        action: replace
+        target_label: pod
+    - job_name: kserve-runtime-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels:
+        - __meta_kubernetes_namespace
+        action: keep
+        regex: kserve|ml-team-.*
+      - source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_kserve_io_port
+        action: keep
+        regex: .+
+      - source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_kserve_io_path
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_kserve_io_port
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::[0-9]+)?;([0-9]+)
+        replacement: $1:$2
+      - source_labels:
+        - __meta_kubernetes_namespace
+        action: replace
+        target_label: namespace
+      - source_labels:
+        - __meta_kubernetes_pod_name
+        action: replace
+        target_label: pod
+
+grafana:
+  adminUser: admin
+  adminPassword: grafanaadmin123
+  persistence:
+    enabled: true
+    type: pvc
+    accessModes:
+    - ReadWriteOnce
+    size: 2Gi
+  service:
+    type: LoadBalancer
+    loadBalancerIP: 172.29.0.205
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+  additionalDataSources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki.monitoring.svc.cluster.local:3100
+    isDefault: false
+    jsonData:
+      maxLines: 5000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 400m
+      memory: 512Mi
