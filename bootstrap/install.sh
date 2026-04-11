@@ -14,6 +14,13 @@ MINIO_HOST_DATA_DIR="${MINIO_HOST_DATA_DIR:-${ROOT_DIR}/.local/minio-data}"
 MINIO_CONTAINER_DATA_DIR="${MINIO_CONTAINER_DATA_DIR:-/var/local/minio-data}"
 MINIO_HOST_DATA_SUBPATH="${MINIO_HOST_DATA_SUBPATH:-minio}"
 MINIO_HOST_DATA_MODE="${MINIO_HOST_DATA_MODE:-0777}"
+GITEA_HOST_DATA_DIR="${GITEA_HOST_DATA_DIR:-${ROOT_DIR}/.local/gitea-data}"
+GITEA_CONTAINER_DATA_DIR="${GITEA_CONTAINER_DATA_DIR:-/var/local/gitea-data}"
+GITEA_HOST_DATA_SUBPATH="${GITEA_HOST_DATA_SUBPATH:-gitea}"
+GITEA_HOST_DATA_MODE="${GITEA_HOST_DATA_MODE:-0777}"
+GITEA_PV_NAME="${GITEA_PV_NAME:-gitea-shared-storage-pv}"
+GITEA_PVC_NAME="${GITEA_PVC_NAME:-gitea-shared-storage}"
+GITEA_PVC_SIZE="${GITEA_PVC_SIZE:-10Gi}"
 MLFLOW_HOST_DATA_SUBPATH="${MLFLOW_HOST_DATA_SUBPATH:-mlflow}"
 MLFLOW_TENANTS="${MLFLOW_TENANTS:-ml-team-a ml-team-b}"
 
@@ -132,6 +139,17 @@ ensure_minio_host_data_dir() {
   done
 }
 
+ensure_gitea_host_data_dir() {
+  local gitea_data_path
+  gitea_data_path="${GITEA_HOST_DATA_DIR}/${GITEA_HOST_DATA_SUBPATH}"
+
+  log "Resetting Gitea host data for install: ${GITEA_HOST_DATA_DIR}"
+  rm -rf "${GITEA_HOST_DATA_DIR}"
+  mkdir -p "${GITEA_HOST_DATA_DIR}"
+  mkdir -p "${gitea_data_path}"
+  chmod "${GITEA_HOST_DATA_MODE}" "${GITEA_HOST_DATA_DIR}" "${gitea_data_path}" || true
+}
+
 build_kind_config() {
   local tmp_config
   tmp_config="$(mktemp)"
@@ -156,6 +174,8 @@ nodes:
   extraMounts:
   - hostPath: ${MINIO_HOST_DATA_DIR}
     containerPath: ${MINIO_CONTAINER_DATA_DIR}
+  - hostPath: ${GITEA_HOST_DATA_DIR}
+    containerPath: ${GITEA_CONTAINER_DATA_DIR}
 EOF
     for _ in $(seq 1 "$WORKER_COUNT"); do
       cat <<EOF
@@ -163,6 +183,8 @@ EOF
   extraMounts:
   - hostPath: ${MINIO_HOST_DATA_DIR}
     containerPath: ${MINIO_CONTAINER_DATA_DIR}
+  - hostPath: ${GITEA_HOST_DATA_DIR}
+    containerPath: ${GITEA_CONTAINER_DATA_DIR}
 EOF
     done
   } >"$tmp_config"
@@ -298,15 +320,73 @@ install_argocd() {
 }
 
 install_gitea() {
+  local gitea_pv_path
+  local waited
+  local pvc_phase
+
   log "Installing Gitea"
   helm repo add gitea-charts https://dl.gitea.io/charts/ >/dev/null
   helm repo update >/dev/null
 
   kubectl create namespace gitea --dry-run=client -o yaml | kubectl apply -f -
 
+  gitea_pv_path="${GITEA_CONTAINER_DATA_DIR}/${GITEA_HOST_DATA_SUBPATH}"
+  log "Reconciling Gitea host-backed persistence at ${GITEA_HOST_DATA_DIR}/${GITEA_HOST_DATA_SUBPATH}"
+  cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ${GITEA_PV_NAME}
+spec:
+  capacity:
+    storage: ${GITEA_PVC_SIZE}
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: ${gitea_pv_path}
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${GITEA_PVC_NAME}
+  namespace: gitea
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: ""
+  volumeName: ${GITEA_PV_NAME}
+  resources:
+    requests:
+      storage: ${GITEA_PVC_SIZE}
+EOF
+
+  waited=0
+  pvc_phase=""
+  while [[ "$waited" -lt 60 ]]; do
+    pvc_phase="$(kubectl -n gitea get pvc "${GITEA_PVC_NAME}" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    if [[ "$pvc_phase" == "Bound" ]]; then
+      break
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+
+  if [[ "$pvc_phase" != "Bound" ]]; then
+    echo "Timed out waiting for Gitea PVC ${GITEA_PVC_NAME} to bind." >&2
+    kubectl get pv "${GITEA_PV_NAME}" >&2 || true
+    kubectl -n gitea get pvc "${GITEA_PVC_NAME}" >&2 || true
+    exit 1
+  fi
+
   helm upgrade --install gitea gitea-charts/gitea \
     --namespace gitea \
-    --set persistence.enabled=false \
+    --set persistence.enabled=true \
+    --set persistence.create=false \
+    --set-string persistence.claimName="${GITEA_PVC_NAME}" \
     --set redis-cluster.enabled=false \
     --set postgresql-ha.enabled=false \
     --set-string gitea.admin.username="${GITEA_ADMIN_USERNAME}" \
@@ -397,6 +477,7 @@ main() {
   delete_existing_cluster
   ensure_kind_network
   ensure_minio_host_data_dir
+  ensure_gitea_host_data_dir
   TMP_KIND_CONFIG="$(build_kind_config)"
   create_cluster "$TMP_KIND_CONFIG"
   tune_kind_node_nofile "$KIND_NODE_NOFILE_LIMIT"

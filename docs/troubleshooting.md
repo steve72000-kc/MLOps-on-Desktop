@@ -150,6 +150,24 @@ Fixes:
 - Re-apply permissive mode if needed:
   - `chmod 0777 .local/minio-data .local/minio-data/minio`
 
+## Gitea PVC remains Pending
+
+- Check PV/PVC state:
+  - `kubectl get pv gitea-shared-storage-pv`
+  - `kubectl -n gitea get pvc gitea-shared-storage`
+- Confirm Gitea path exists inside Kind nodes:
+  - `docker exec -it kind-aiml-control-plane ls -la /var/local/gitea-data`
+- Ensure `bootstrap/install.sh` completed with Gitea bind mount creation.
+
+## Gitea pod cannot write data directory
+
+- Check pod events/logs:
+  - `kubectl -n gitea describe pod -l app.kubernetes.io/name=gitea`
+- Ensure host path permissions are permissive for local dev:
+  - `ls -ld .local/gitea-data .local/gitea-data/gitea`
+- Re-apply permissive mode if needed:
+  - `chmod 0777 .local/gitea-data .local/gitea-data/gitea`
+
 ## Argo CD login
 
 - Username: `admin`

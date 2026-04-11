@@ -30,7 +30,7 @@ polls converge to `noop/no_diff` when intent is unchanged.
    - bootstrap applies best-effort Kind node runtime tuning for `nofile` and `inotify` limits (configurable via env vars).
 2. MetalLB installation + IP pool in Docker `kind` network.
 3. Argo CD installation (`argocd-server` exposed as `LoadBalancer`).
-4. Gitea installation (`gitea-http` and `gitea-ssh` exposed as `LoadBalancer`).
+4. Gitea installation (`gitea-http` and `gitea-ssh` exposed as `LoadBalancer`) backed by a static hostPath PV/PVC for sqlite and repo storage.
 5. Mandatory GitOps init (`bootstrap/gitops-init.sh`):
    - local git `gitea` remote reconciliation while preserving any existing `origin` remote
    - repo creation/push to Gitea
@@ -86,6 +86,7 @@ polls converge to `noop/no_diff` when intent is unchanged.
   - `ClusterWorkflowTemplate/mlflow-tag-sync`
   - `ClusterWorkflowTemplate/mlflow-tag-prune`
   - dispatcher service account and RBAC for child workflow submission
+- `gitea` (Helm): sqlite backend persisted by a static hostPath PV/PVC mounted at `/data`.
 - `mlflow` (Helm): community chart `1.7.3`, one app per team.
 - `minio` (manifests): single replica in `minio` namespace backed by static hostPath PV/PVC.
 - `mlflow` storage PVs (manifests): static hostPath PVs for `ml-team-a` and `ml-team-b`.
@@ -188,12 +189,17 @@ The checked-in team-a baseline lives under
 
 ## Storage And Persistence
 
+- `bootstrap/install.sh` mounts host `${ROOT_DIR}/.local/gitea-data` into every
+  Kind node at `/var/local/gitea-data`.
 - `bootstrap/install.sh` mounts host `${ROOT_DIR}/.local/minio-data` into every
   Kind node at `/var/local/minio-data`.
+- Gitea PV points to `/var/local/gitea-data/gitea`.
 - MinIO PV points to `/var/local/minio-data/minio`.
-- Deleting the Kind cluster removes Kubernetes objects but not host object data.
-- `bootstrap/uninstall.sh` preserves host data by default.
+- Deleting the Kind cluster alone removes Kubernetes objects but not host object data.
+- `bootstrap/install.sh` wipes local Gitea data before reinstalling the cluster.
+- `bootstrap/uninstall.sh` also wipes local Gitea data.
 - Intentional data wipe uses `./bootstrap/reset-minio-data.sh --force`.
+- Gitea sqlite and Git repositories survive pod restarts and container replacement while the cluster is running.
 - MLflow sqlite is persisted via per-team PVCs bound to static hostPath PVs.
 - MinIO bootstraps tenant buckets, users, and policies for MLflow artifact
   partitioning.
