@@ -75,13 +75,11 @@ resolve_argocd_app_path() {
     return
   fi
 
-  local candidate
-  for candidate in "clusters/kind/bootstrap"; do
-    if [[ -d "${ROOT_DIR}/${candidate}" ]]; then
-      ARGOCD_APP_PATH="$candidate"
-      return
-    fi
-  done
+  local candidate="clusters/kind/bootstrap"
+  if [[ -d "${ROOT_DIR}/${candidate}" ]]; then
+    ARGOCD_APP_PATH="$candidate"
+    return
+  fi
 
   echo "Unable to determine ARGOCD_APP_PATH automatically." >&2
   echo "Expected one of:" >&2
