@@ -203,8 +203,6 @@ create_cluster() {
 tune_kind_node_nofile() {
   local limit="$1"
   local node
-  local containerd_pid
-  local kubelet_pid
 
   if [[ -z "$limit" ]]; then
     log "Skipping Kind node nofile tuning (KIND_NODE_NOFILE_LIMIT is empty)"
@@ -301,8 +299,7 @@ install_argocd() {
   kubectl apply --server-side -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/v3.3.6/manifests/install.yaml"
 
   # Wait for the deployment object to exist before waiting on availability.
-  local i
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     if kubectl -n argocd get deploy argocd-server >/dev/null 2>&1; then
       break
     fi

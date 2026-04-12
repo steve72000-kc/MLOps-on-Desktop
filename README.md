@@ -111,6 +111,12 @@ settle. Log into Argo CD to watch that progress.
 make validate
 ```
 
+For a clean-room check that mirrors CI on Code Berg:
+
+```bash
+make validate-container
+```
+
 Validation covers:
 
 - shell syntax for bootstrap and helper scripts

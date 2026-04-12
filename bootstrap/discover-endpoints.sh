@@ -255,6 +255,7 @@ collect_cluster_status_urls() {
 }
 
 collect_cluster_knative_domains() {
+  # shellcheck disable=SC2016
   kubectl -n knative-serving get configmap config-domain -o go-template='{{range $k, $v := .data}}{{printf "%s\n" $k}}{{end}}' 2>/dev/null || true
 }
 
@@ -295,7 +296,7 @@ print_app_health_summary() {
     return
   fi
 
-  while IFS='|' read -r name sync health revision; do
+  while IFS='|' read -r name sync health _; do
     [[ -z "${name:-}" ]] && continue
     total=$((total + 1))
     [[ "$sync" == "Synced" ]] && synced=$((synced + 1))
@@ -307,7 +308,8 @@ print_app_health_summary() {
 
   echo "Applications: ${total} total | $(paint "${C_GREEN}" "${synced} synced") | $(paint "${C_GREEN}" "${healthy} healthy")"
   if ((out_of_sync > 0 || not_healthy > 0)); then
-    echo "$(paint "${C_YELLOW}" "Attention: ${out_of_sync} out-of-sync, ${not_healthy} not-healthy (${unknown} unknown).")"
+    paint "${C_YELLOW}" "Attention: ${out_of_sync} out-of-sync, ${not_healthy} not-healthy (${unknown} unknown)."
+    echo
   fi
 }
 
@@ -316,22 +318,27 @@ service_readiness() {
   local live="$2"
 
   if [[ "$live" == "<missing>" ]]; then
-    echo "$(paint "${C_RED}" "MISSING")"
+    paint "${C_RED}" "MISSING"
+    echo
     return
   fi
   if [[ "$live" == "<pending>" || -z "$live" ]]; then
-    echo "$(paint "${C_YELLOW}" "PENDING")"
+    paint "${C_YELLOW}" "PENDING"
+    echo
     return
   fi
   if [[ -n "$configured" && "$configured" != "<n/a>" && "$configured" == "$live" ]]; then
-    echo "$(paint "${C_GREEN}" "OK")"
+    paint "${C_GREEN}" "OK"
+    echo
     return
   fi
   if [[ -n "$configured" && "$configured" != "<n/a>" && "$configured" != "$live" ]]; then
-    echo "$(paint "${C_YELLOW}" "DRIFT")"
+    paint "${C_YELLOW}" "DRIFT"
+    echo
     return
   fi
-  echo "$(paint "${C_GREEN}" "OK")"
+  paint "${C_GREEN}" "OK"
+  echo
 }
 
 colorize_status_table() {
@@ -514,8 +521,10 @@ main() {
     ingress_addr_for_hosts="$ingress_addr"
   fi
 
-  echo "$(paint "${C_BOLD}${C_MAGENTA}" "ai-ml endpoint discovery report")"
-  echo "$(paint "${C_DIM}" "Generated: ${now}")"
+  paint "${C_BOLD}${C_MAGENTA}" "ai-ml endpoint discovery report"
+  echo
+  paint "${C_DIM}" "Generated: ${now}"
+  echo
   echo "Kubernetes context: $(paint "${C_CYAN}" "${context:-<unknown>}")"
   echo "Kubernetes API server: $(paint "${C_CYAN}" "${api_server:-<unknown>}")"
 
@@ -561,6 +570,7 @@ main() {
   core_lb_table="$(render_table "$core_lb_tsv")"
   colorize_status_table "$core_lb_table"
 
+  # shellcheck disable=SC2016
   lb_extra_rows="$(kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.type}{"\t"}{.status.loadBalancer.ingress[0].ip}{"\t"}{.status.loadBalancer.ingress[0].hostname}{"\t"}{range $i,$p := .spec.ports}{if $i},{end}{$p.port}{end}{"\n"}{end}' 2>/dev/null || true)"
   if [[ -n "$lb_extra_rows" ]]; then
     lb_extra_rows="$(
@@ -634,6 +644,7 @@ main() {
     colorize_status_table "$argo_table"
   fi
 
+  # shellcheck disable=SC2016
   vs_tsv_rows="$(kubectl get virtualservice -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{range $i, $h := .spec.hosts}{if $i},{end}{$h}{end}{"\n"}{end}' 2>/dev/null || true)"
   if [[ -n "$vs_tsv_rows" ]]; then
     print_section "VirtualService Hosts"
@@ -672,7 +683,8 @@ main() {
   elif ((${#ingress_hosts[@]} == 0)); then
     echo "No ingress hostnames were discovered from repo or live cluster resources."
   else
-    echo "$(paint "${C_BOLD}" "Add these lines to /etc/hosts for local DNS convenience:")"
+    paint "${C_BOLD}" "Add these lines to /etc/hosts for local DNS convenience:"
+    echo
     for host in "${ingress_hosts[@]}"; do
       [[ -z "$host" ]] && continue
       echo "${ingress_addr_for_hosts} ${host}"
@@ -680,7 +692,8 @@ main() {
       ingress_host_count=$((ingress_host_count + 1))
     done
     echo
-    echo "$(paint "${C_BOLD}" "Manual command block (this script does not edit /etc/hosts):")"
+    paint "${C_BOLD}" "Manual command block (this script does not edit /etc/hosts):"
+    echo
     echo "sudo tee -a /etc/hosts >/dev/null <<'EOF'"
     printf "%s" "$host_lines"
     echo "EOF"

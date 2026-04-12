@@ -59,17 +59,25 @@ python3 -m unittest discover -s tests -v
 
 KUSTOMIZE_RENDERER="$(detect_kustomize_renderer)"
 if [ -n "$KUSTOMIZE_RENDERER" ]; then
+  tracked_kustomizations="$(
+    git -c safe.directory="$ROOT_DIR" -C "$ROOT_DIR" ls-files |
+      awk '/(^|\/)kustomization\.yaml$/ {print}' |
+      sort
+  )"
+
   if [ "$KUSTOMIZE_RENDERER" = "kustomize" ]; then
     log "Building tracked kustomize roots with standalone kustomize"
   else
     log "Building tracked kustomize roots with kubectl kustomize"
   fi
 
-  while IFS= read -r kustomization; do
-    dir="$(dirname "$kustomization")"
-    printf ' - %s\n' "$dir"
-    build_kustomization "$KUSTOMIZE_RENDERER" "$dir"
-  done < <(git ls-files | awk '/(^|\/)kustomization\.yaml$/ {print}' | sort)
+  if [ -n "$tracked_kustomizations" ]; then
+    while IFS= read -r kustomization; do
+      dir="$(dirname "$kustomization")"
+      printf ' - %s\n' "$dir"
+      build_kustomization "$KUSTOMIZE_RENDERER" "$dir"
+    done <<< "$tracked_kustomizations"
+  fi
 else
   log "Skipping kustomize validation (neither kustomize nor kubectl is installed)"
 fi
