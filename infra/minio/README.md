@@ -104,7 +104,7 @@ requires updating `tenant-bootstrap-configmap.yaml` and
 - object data persists across cluster rebuilds while
   `${ROOT_DIR}/.local/minio-data` is retained
 - `bootstrap/uninstall.sh` preserves local MinIO host data by default
-- `./bootstrap/reset-minio-data.sh --force` clears the local MinIO host data
+- `./bootstrap/reset-minio-data.sh --force` clears the local MinIO host data; if you need `sudo`, the script restores ownership to the invoking user
 
 ## Quick Checks
 

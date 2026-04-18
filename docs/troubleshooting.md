@@ -146,9 +146,11 @@ Fixes:
 - Check pod events/logs:
   - `kubectl -n minio describe pod -l app.kubernetes.io/name=minio`
 - Ensure host path permissions are permissive for local dev:
-  - `ls -ld .local/minio-data .local/minio-data/minio`
+  - `ls -ld .local .local/minio-data .local/minio-data/minio`
 - Re-apply permissive mode if needed:
   - `chmod 0777 .local/minio-data .local/minio-data/minio`
+- If `.local` is owned by root after a prior `sudo` reset, restore it before reinstalling:
+  - `sudo chown -R "$(id -un):$(id -gn)" .local`
 
 ## Gitea PVC remains Pending
 

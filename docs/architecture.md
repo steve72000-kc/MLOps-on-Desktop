@@ -216,7 +216,7 @@ The checked-in team-a baseline lives under
 - Deleting the Kind cluster alone removes Kubernetes objects but not host object data.
 - `bootstrap/install.sh` wipes local Gitea data before reinstalling the cluster.
 - `bootstrap/uninstall.sh` also wipes local Gitea data.
-- Intentional data wipe uses `./bootstrap/reset-minio-data.sh --force`.
+- Intentional data wipe uses `./bootstrap/reset-minio-data.sh --force`; if elevated cleanup is needed, invoking it through `sudo` restores ownership to the calling user.
 - Gitea sqlite and Git repositories survive pod restarts and container replacement while the cluster is running.
 - MLflow sqlite is persisted via per-team PVCs bound to static hostPath PVs.
 - MinIO bootstraps tenant buckets, users, and policies for MLflow artifact

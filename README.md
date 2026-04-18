@@ -54,8 +54,10 @@ Install behavior:
 - preserves an existing local `origin` remote such as GitHub or Codeberg
 - creates or reconciles local `gitea` remote
 - creates or reconciles the repo in in-cluster Gitea
+- keeps the repo-local state root `.local/` present in git so a fresh clone starts with a user-owned parent directory
 - mounts Gitea repos and sqlite state on the host under `.local/gitea-data`
 - wipes `.local/gitea-data` on each `./bootstrap/install.sh` so every fresh bootstrap starts from a clean in-cluster Gitea state
+- fails fast if `.local/` is not writable instead of continuing into a broken bootstrap
 - pushes the current branch, makes the current local branch track `gitea/<branch>`,
   and reconciles that branch as the in-cluster repo default branch
 - creates or updates the Argo CD root app (`ai-ml-root`)
