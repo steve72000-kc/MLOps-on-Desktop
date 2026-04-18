@@ -59,8 +59,52 @@ cleanup() {
   fi
 }
 
+require_non_root_user() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    echo "Do not run bootstrap/install.sh as root." >&2
+    echo "It writes repo-local state under ${ROOT_DIR}/.local and reconfigures local git remotes." >&2
+    echo "Run it as your normal user to avoid leaving repo files owned by root." >&2
+    exit 1
+  fi
+}
+
 require_tools() {
   "${ROOT_DIR}/bootstrap/check-prereqs.sh"
+}
+
+ensure_writable_directory() {
+  local dir="$1"
+
+  if [[ ! -e "$dir" ]]; then
+    log "Ensuring local state directory exists: ${dir}"
+    if ! mkdir -p "$dir"; then
+      echo "Unable to create local state directory: ${dir}" >&2
+      echo "This usually means a parent path is owned by root from a prior sudo reset/bootstrap." >&2
+      echo "Fix ownership and retry:" >&2
+      echo "  sudo chown -R $(id -un):$(id -gn) \"${dir}\"" >&2
+      exit 1
+    fi
+  fi
+
+  if [[ ! -d "$dir" ]]; then
+    echo "Local state path is not a directory: ${dir}" >&2
+    exit 1
+  fi
+
+  if [[ ! -w "$dir" ]]; then
+    echo "Local state directory is not writable: ${dir}" >&2
+    echo "This usually means it is owned by root from a prior sudo reset/bootstrap." >&2
+    echo "Fix ownership and retry:" >&2
+    echo "  sudo chown -R $(id -un):$(id -gn) \"${dir}\"" >&2
+    exit 1
+  fi
+}
+
+ensure_local_state_dirs() {
+  ensure_writable_directory "$(dirname "$MINIO_HOST_DATA_DIR")"
+  ensure_writable_directory "$(dirname "$GITEA_HOST_DATA_DIR")"
+  ensure_writable_directory "$MINIO_HOST_DATA_DIR"
+  ensure_writable_directory "$GITEA_HOST_DATA_DIR"
 }
 
 validate_lb_ip_config() {
@@ -468,6 +512,8 @@ print_endpoints() {
 
 main() {
   trap cleanup EXIT
+  require_non_root_user
+  ensure_local_state_dirs
   require_tools
   validate_lb_ip_config
   validate_gitops_repo_identity
