@@ -342,7 +342,11 @@ Checks:
 Fixes:
 - resync `minio` Argo app to re-run bootstrap hook job:
   - `kubectl -n argocd annotate application minio argocd.argoproj.io/refresh=hard --overwrite`
-- verify team NetworkPolicy allows egress to `minio` namespace on TCP `9000`
+- verify the role-specific NetworkPolicy still allows the affected pod class to
+  reach `minio` on TCP `9000`:
+  - `mlflow-egress-minio`
+  - `workflow-egress-minio`
+  - `serving-runtime-egress-minio`
 - verify secret values:
   - `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MLFLOW_S3_ENDPOINT_URL`.
 
@@ -366,7 +370,9 @@ Checks:
 
 Fixes used in repo:
 - Relaxed probe timing in `infra/mlflow/base/values.yaml`.
-- Team NetworkPolicy allows `istio-system` ingress/egress.
+- tenant baseline policy allows only `istio-system/app=istiod` control-plane
+  egress and `mlflow-allow-ingress-mesh` keeps MLflow reachable from
+  `istio-ingressgateway` pods.
 
 ## MLflow tag-sync workflow appears "stuck" in `Running`
 
@@ -544,8 +550,9 @@ Cause:
 - restrictive tenant egress policy blocks artifact access to MinIO.
 
 Current repo state:
-- shared tenant guardrails allow mesh/system traffic, MinIO on TCP `9000`,
-  Gitea on TCP `3000`, and DNS
+- shared tenant guardrails keep DNS and `istiod` control-plane egress at the
+  namespace baseline, while `serving-runtime-egress-minio` carries the model
+  artifact path explicitly
 
 Check:
 - `kubectl -n ml-team-a logs <predictor-pod> -c storage-initializer`

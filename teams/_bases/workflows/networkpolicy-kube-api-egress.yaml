@@ -4,9 +4,8 @@ metadata:
   name: workflow-kube-api-egress
 spec:
   podSelector:
-    matchExpressions:
-    - key: workflows.argoproj.io/workflow
-      operator: Exists
+    matchLabels:
+      platform.ai-ml/network-role: workflow
   policyTypes:
   - Egress
   egress:

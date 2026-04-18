@@ -38,6 +38,10 @@ Ownership boundaries:
   mounting, not duplicate workflow logic
 - team `models/` directories define Argo CD wiring from `teams/<team>/` to
   `apps/tenants/<team>/...`
+- shared workflow and tenant-core bases now carry the least-privilege
+  `NetworkPolicy` set for hub, MLflow, workflow, and serving-runtime roles,
+  including explicit `istiod`, `istio-ingressgateway`, and `activator`
+  selectors
 
 Local build constraint:
 

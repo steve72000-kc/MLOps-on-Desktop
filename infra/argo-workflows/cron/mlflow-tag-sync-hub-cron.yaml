@@ -14,6 +14,9 @@ spec:
     serviceAccountName: mlflow-tag-sync-dispatcher
     entrypoint: dispatch
     podMetadata:
+      labels:
+        platform.ai-ml/network-role: hub-dispatcher
+        app.kubernetes.io/component: mlflow-tag-sync-hub
       annotations:
         sidecar.istio.io/inject: "true"
         proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
@@ -203,6 +206,9 @@ spec:
           metadata:
             generateName: mlflow-tag-prune-
             namespace: {{inputs.parameters.namespace}}
+            labels:
+              platform.ai-ml/network-role: workflow
+              app.kubernetes.io/component: mlflow-tag-prune
           spec:
             serviceAccountName: mlflow-tag-sync
             workflowTemplateRef:
@@ -336,6 +342,9 @@ spec:
           metadata:
             generateName: mlflow-tag-sync-
             namespace: {{inputs.parameters.namespace}}
+            labels:
+              platform.ai-ml/network-role: workflow
+              app.kubernetes.io/component: mlflow-tag-sync
           spec:
             serviceAccountName: mlflow-tag-sync
             workflowTemplateRef:

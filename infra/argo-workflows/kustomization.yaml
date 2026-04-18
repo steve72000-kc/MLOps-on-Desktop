@@ -7,3 +7,4 @@ resources:
 - templates/mlflow-tag-prune-workflow.yaml
 - cron/rbac-mlflow-tag-sync-dispatcher.yaml
 - cron/mlflow-tag-sync-hub-cron.yaml
+- networkpolicy-hub-egress.yaml

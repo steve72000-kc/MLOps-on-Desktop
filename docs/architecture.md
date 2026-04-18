@@ -131,9 +131,23 @@ The checked-in tenant configs define:
 - `mlflowSecretName`
 - `gitSecretName`
 
-Team network policies explicitly allow `knative-serving` traffic, Gitea
-writeback, MinIO artifact access, and DNS. Workflow pods also allow Kubernetes
-API dry-run access.
+Team network policies keep only DNS plus `istio-system/app=istiod` at the
+namespace baseline. Tenant access to MLflow, Gitea, MinIO, and serving
+runtimes is role-scoped, and mesh ingress trust is narrowed to the pods that
+actually source traffic:
+
+- hub pods in `argo` carry `platform.ai-ml/network-role=hub-dispatcher` and
+  are limited to Kubernetes API, tenant MLflow, DNS, and
+  `istio-system/app=istiod`
+- tenant workflow pods carry `platform.ai-ml/network-role=workflow` and are
+  limited to MLflow, Gitea, Kubernetes API, DNS, MinIO, and `istiod`
+  control-plane egress
+- tenant MLflow pods allow ingress only from hub pods, tenant workflow pods,
+  and `istio-system` ingress gateway pods; egress to MinIO remains explicit
+- rendered KServe predictor pods carry
+  `platform.ai-ml/network-role=serving-runtime` and allow ingress only from the
+  `istio-system` ingress gateway and `knative-serving/app=activator` path plus
+  egress to MinIO, DNS, and `istiod`
 
 `teams/_bases/workflows/` provides the shared tenant workflow runtime:
 
@@ -141,10 +155,14 @@ API dry-run access.
 - tenant `Role` and `RoleBinding`
 - tenant-local `ConfigMap/mlflow-tag-sync-scripts` generated from
   `infra/argo-workflows/scripts/*`
-- workflow-only Kubernetes API egress policy
+- workflow egress policies for Kubernetes API, MLflow, Gitea, and MinIO
 
 `teams/_bases/tenant-core/networkpolicy-mlflow-allow-argo.yaml` allows hub
 pods in namespace `argo` to reach tenant MLflow pods for model discovery.
+
+`infra/argo-workflows/networkpolicy-hub-egress.yaml` keeps the central hub in
+`argo` least-privileged as well; unrelated pods in the namespace do not inherit
+tenant MLflow access.
 
 The checked-in team-a baseline lives under
 `apps/tenants/ml-team-a/deployments/`:

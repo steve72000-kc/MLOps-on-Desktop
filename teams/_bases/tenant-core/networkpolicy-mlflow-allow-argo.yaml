@@ -15,3 +15,6 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: argo
+      podSelector:
+        matchLabels:
+          platform.ai-ml/network-role: hub-dispatcher
