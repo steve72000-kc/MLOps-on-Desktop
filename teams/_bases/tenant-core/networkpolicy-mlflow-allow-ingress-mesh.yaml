@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mlflow-allow-ingress-mesh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+  policyTypes:
+  - Ingress
+  ingress:
+  # The VirtualService is defined in knative-serving, but the source pods that
+  # actually hit MLflow are the Istio ingress gateway pods in istio-system.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          app: istio-ingressgateway
+          istio: ingressgateway

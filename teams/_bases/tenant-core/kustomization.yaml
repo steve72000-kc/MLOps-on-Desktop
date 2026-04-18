@@ -4,3 +4,8 @@ resources:
 - limitrange.yaml
 - networkpolicy.yaml
 - networkpolicy-mlflow-allow-argo.yaml
+- networkpolicy-mlflow-allow-workflows.yaml
+- networkpolicy-mlflow-allow-ingress-mesh.yaml
+- networkpolicy-mlflow-egress-minio.yaml
+- networkpolicy-serving-runtime-ingress-mesh.yaml
+- networkpolicy-serving-runtime-egress-minio.yaml

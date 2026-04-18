@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: serving-runtime-egress-minio
+spec:
+  podSelector:
+    matchLabels:
+      platform.ai-ml/network-role: serving-runtime
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: minio
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: minio
+    ports:
+    - protocol: TCP
+      port: 9000

@@ -60,8 +60,9 @@ Tenant app ownership (promotion targets):
 Observed/implemented guardrails:
 
 - Team-a high-capacity quota profile exists (`teams/ml-team-a/resourcequota.yaml`) but is currently commented out in `teams/ml-team-a/kustomization.yaml`.
-- Team network policies allow `istio-system` and `knative-serving` traffic.
-- Team network policies allow MinIO artifact access on TCP `9000`, Gitea writeback on TCP `3000`, and DNS to `kube-dns`.
+- Team network policies keep only DNS plus `istio-system/app=istiod` at namespace scope.
+- Access to MinIO, Gitea, MLflow, and serving-runtime pods is role-scoped:
+  hub pods reach tenant MLflow, workflow pods reach MLflow/Gitea/MinIO/Kubernetes API, MLflow trusts only hub/workflow/ingressgateway callers, and serving-runtime pods trust only ingressgateway and activator callers.
 
 ## Current Activation Profile
 

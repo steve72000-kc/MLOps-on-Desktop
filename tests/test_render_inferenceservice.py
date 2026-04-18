@@ -71,6 +71,18 @@ class RenderInferenceServiceTests(unittest.TestCase):
         )
         self.assertEqual(rendered["metadata"]["labels"]["platform.ai-ml/tenant"], "ml-team-a")
         self.assertEqual(rendered["metadata"]["labels"]["platform.ai-ml/alias"], "champion")
+        self.assertEqual(
+            rendered["metadata"]["labels"][MODULE.NETWORK_ROLE_LABEL],
+            MODULE.SERVING_RUNTIME_NETWORK_ROLE,
+        )
+        self.assertEqual(
+            rendered["spec"]["predictor"]["labels"][MODULE.NETWORK_ROLE_LABEL],
+            MODULE.SERVING_RUNTIME_NETWORK_ROLE,
+        )
+        self.assertEqual(
+            rendered["spec"]["predictor"]["labels"][MODULE.TENANT_LABEL],
+            "ml-team-a",
+        )
 
     def test_render_manifest_requires_model_class_for_custom_runtime(self) -> None:
         intent = {

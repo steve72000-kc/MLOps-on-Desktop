@@ -14,6 +14,7 @@ MLflow alias-driven GitOps writeback.
 - `templates/mlflow-tag-prune-workflow.yaml`
 - `cron/rbac-mlflow-tag-sync-dispatcher.yaml`
 - `cron/mlflow-tag-sync-hub-cron.yaml`
+- `networkpolicy-hub-egress.yaml`
 
 Shared workflow scripts live under `infra/argo-workflows/scripts/`. They are
 not rendered directly here. Tenant workflow bases generate a tenant-local
@@ -25,6 +26,7 @@ not rendered directly here. Tenant workflow bases generate a tenant-local
 
 - `CronWorkflow/mlflow-tag-sync-hub`
 - namespace `argo`
+- hub pod label `platform.ai-ml/network-role=hub-dispatcher`
 - schedule `*/5 * * * *`
 - timezone `America/New_York`
 - `concurrencyPolicy: Forbid`
@@ -98,10 +100,34 @@ Each tenant namespace that participates in the shared flow must contain:
 - `ServiceAccount/mlflow-tag-sync`
 - tenant `Role` and `RoleBinding`
 - `NetworkPolicy/workflow-kube-api-egress`
+- `NetworkPolicy/workflow-egress-mlflow`
+- `NetworkPolicy/workflow-egress-gitea`
+- `NetworkPolicy/workflow-egress-minio`
 - `ConfigMap/mlflow-tag-sync-scripts`
 
-`teams/_bases/tenant-core/networkpolicy-mlflow-allow-argo.yaml` allows hub
-pods in namespace `argo` to reach tenant MLflow pods for model discovery.
+Tenant least-privilege networking is split across the shared workflow and
+tenant-core bases:
+
+- `infra/argo-workflows/networkpolicy-hub-egress.yaml` limits hub pods in
+  `argo` to Kubernetes API, tenant MLflow, DNS, and
+  `istio-system/app=istiod`
+- `teams/_bases/tenant-core/networkpolicy-mlflow-allow-argo.yaml` allows only
+  hub pods in `argo` to reach tenant MLflow pods for model discovery
+- `teams/_bases/tenant-core/networkpolicy-mlflow-allow-workflows.yaml` allows
+  tenant workflow pods to call MLflow
+- `teams/_bases/tenant-core/networkpolicy-mlflow-allow-ingress-mesh.yaml`
+  trusts only `istio-system` ingress gateway pods for MLflow UI/API ingress
+- `teams/_bases/tenant-core/networkpolicy-mlflow-egress-minio.yaml` keeps
+  MLflow artifact access explicit
+- `teams/_bases/tenant-core/networkpolicy-serving-runtime-*` isolates rendered
+  serving pods behind the `istio-ingressgateway` + `knative-serving/app=activator`
+  path and explicit MinIO egress
+
+The sync and prune workflow templates stamp workflow pods with
+`platform.ai-ml/network-role=workflow`. `render_inferenceservice.py` stamps the
+rendered predictor pod spec with
+`platform.ai-ml/network-role=serving-runtime` so the tenant policies can select
+those runtime pods deterministically.
 
 Writeback and prune do not hardcode tenant deployment paths. Both scripts read
 `writebackRoot` from `teams/<tenant>/tenant-config.yaml` inside the cloned repo.

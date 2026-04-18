@@ -3,6 +3,9 @@ kind: Kustomization
 resources:
 - rbac-mlflow-tag-sync.yaml
 - networkpolicy-kube-api-egress.yaml
+- networkpolicy-workflow-egress-mlflow.yaml
+- networkpolicy-workflow-egress-gitea.yaml
+- networkpolicy-workflow-egress-minio.yaml
 configMapGenerator:
 - name: mlflow-tag-sync-scripts
   files:

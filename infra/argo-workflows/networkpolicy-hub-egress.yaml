@@ -1,0 +1,55 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hub-discovery-egress
+  namespace: argo
+spec:
+  podSelector:
+    matchLabels:
+      platform.ai-ml/network-role: hub-dispatcher
+  policyTypes:
+  - Egress
+  egress:
+  # Sidecar-injected hub pods need xDS/CA access to istiod, not broad
+  # namespace-wide reachability inside istio-system.
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          app: istiod
+  - to:
+    - namespaceSelector:
+        matchExpressions:
+        - key: platform.ai-ml/tenant
+          operator: Exists
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mlflow
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 10.96.0.0/12
+    ports:
+    - protocol: TCP
+      port: 443
+  - to:
+    - ipBlock:
+        cidr: 172.29.0.0/24
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443

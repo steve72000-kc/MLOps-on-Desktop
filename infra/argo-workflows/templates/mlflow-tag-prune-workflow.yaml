@@ -5,6 +5,9 @@ metadata:
 spec:
   entrypoint: prune-stale-manifests
   podMetadata:
+    labels:
+      platform.ai-ml/network-role: workflow
+      app.kubernetes.io/component: mlflow-tag-prune
     annotations:
       sidecar.istio.io/inject: "true"
       proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'

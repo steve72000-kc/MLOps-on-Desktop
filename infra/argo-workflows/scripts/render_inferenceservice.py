@@ -16,6 +16,9 @@ LEGACY_RUNTIME_NAME = "kserve-mlserver"
 CANONICAL_RUNTIME_NAME = "kserve-mlserver-custom"
 S3_STORAGE_SECRET_ANNOTATION = "serving.kserve.io/storageSecretName"
 S3_STORAGE_SERVICE_ACCOUNT = "kserve-storage-sa"
+NETWORK_ROLE_LABEL = "platform.ai-ml/network-role"
+TENANT_LABEL = "platform.ai-ml/tenant"
+SERVING_RUNTIME_NETWORK_ROLE = "serving-runtime"
 
 
 def _write_output(path: pathlib.Path, value: str) -> None:
@@ -72,8 +75,9 @@ def _render_manifest(
         annotations = {}
         metadata["annotations"] = annotations
 
-    labels["platform.ai-ml/tenant"] = tenant
+    labels[TENANT_LABEL] = tenant
     labels["platform.ai-ml/alias"] = alias
+    labels[NETWORK_ROLE_LABEL] = SERVING_RUNTIME_NETWORK_ROLE
     if resolved_version:
         labels["platform.ai-ml/model-version"] = str(resolved_version)
 
@@ -84,6 +88,13 @@ def _render_manifest(
     # Backward compatibility for existing MLflow intent payloads that still
     # reference the legacy runtime name.
     predictor = rendered.get("spec", {}).get("predictor", {})
+    if isinstance(predictor, dict):
+        predictor_labels = predictor.setdefault("labels", {})
+        if not isinstance(predictor_labels, dict):
+            predictor_labels = {}
+            predictor["labels"] = predictor_labels
+        predictor_labels[NETWORK_ROLE_LABEL] = SERVING_RUNTIME_NETWORK_ROLE
+        predictor_labels[TENANT_LABEL] = tenant
     model = predictor.get("model", {}) if isinstance(predictor, dict) else {}
     if isinstance(model, dict) and model.get("runtime") == LEGACY_RUNTIME_NAME:
         model["runtime"] = CANONICAL_RUNTIME_NAME
