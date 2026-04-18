@@ -95,7 +95,12 @@ polls converge to `noop/no_diff` when intent is unchanged.
   - `loki` chart `6.27.0`
   - `promtail` chart `6.17.0`
   - repo-managed dashboards/alerts/scrape resources under `infra/monitoring/manifests/`
+  - Prometheus Operator reconciles `Prometheus` and `Alertmanager` custom
+    resources into the generated `StatefulSet`, config, and service objects
+    that back the metrics path
   - Grafana exposed by static LB (`172.29.0.205`) and host route (`grafana.platform.local`)
+  - Loki runs as a single-binary `StatefulSet`; Promtail runs as a `DaemonSet`
+    and ships selected platform and tenant pod logs into Loki
   - laptop profile defaults:
     - `prometheus-node-exporter` disabled
     - Loki canary/tests/caches/rules sidecar disabled
