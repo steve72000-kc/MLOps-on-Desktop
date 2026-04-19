@@ -36,7 +36,20 @@ This means the main controller for the namespace is Argo CD in namespace
 ## Namespace And Access
 
 - `manifests/namespace.yaml` creates namespace `monitoring`
-- `istio-injection: disabled` is set on the monitoring namespace
+- the monitoring namespace intentionally carries no `istio-injection` label
+  because Istio 1.24 treats `istio-injection: disabled` as stronger than
+  pod-level opt-in
+- leaving the namespace unlabeled keeps monitoring workloads outside the mesh
+  by default while still allowing Prometheus to opt in explicitly
+- Prometheus explicitly opts into Istio sidecar injection through
+  `prometheus.prometheusSpec.podMetadata`; the pod label is what matches the
+  active injector selector
+- Prometheus keeps an Istio sidecar only to write short-lived workload
+  certificates into a shared volume; inbound and outbound traffic capture stay
+  disabled so Prometheus can continue direct pod-IP scraping
+- Grafana, Loki, Promtail, Alertmanager, kube-state-metrics, and the
+  Prometheus Operator still carry explicit sidecar opt-out labels and
+  annotations to keep the local footprint smaller and make the intent obvious
 - Grafana is exposed by `kube-prometheus-stack-grafana` as a `LoadBalancer`
   service on `172.29.0.205`
 - `manifests/virtualservice-grafana.yaml` also exposes Grafana at
@@ -127,8 +140,8 @@ platform wiring:
 
 - namespace `monitoring`
 - `VirtualService/grafana`
-- extra `ServiceMonitor` resources for Argo CD, Argo Workflows, and the
-  Prometheus Operator
+- extra `ServiceMonitor` resources for Argo CD, Argo Workflows,
+  `cert-manager-istio-csr`, and the Prometheus Operator
 - `PrometheusRule/platform-monitoring`
 - Grafana dashboard `ConfigMap` objects
 
@@ -146,9 +159,9 @@ workload.
 In this repo, `ServiceMonitor` resources are used for:
 
 - chart-provided monitoring targets such as Grafana, Prometheus, kube-state-metrics,
-  Alertmanager, and core Kubernetes services
-- repo-managed targets such as Argo CD, Argo Workflows, Prometheus Operator,
-  and Promtail
+  Alertmanager, Promtail, and core Kubernetes services
+- repo-managed targets such as Argo CD, Argo Workflows,
+  `cert-manager-istio-csr`, and the Prometheus Operator
 
 ### `PrometheusRule`
 
@@ -192,6 +205,15 @@ dashboards, scrape metrics, or store logs.
    evaluates configured rules.
 5. Prometheus sends firing alerts to Alertmanager.
 6. Grafana queries Prometheus as a datasource.
+
+Prometheus is the one monitoring workload that joins the mesh in this repo.
+The namespace itself stays unlabeled for injection; Prometheus opts in
+explicitly through its generated pod template. Its sidecar is used only for
+Istio certificate output, not traffic interception. That keeps mTLS-enabled
+KServe runtime scrapes working for injected workloads in `kserve` and
+`ml-team-*` while merged pod metrics in `istio-system`, `knative-serving`,
+`argo`, and other injected namespaces can still be scraped directly. The rest
+of the monitoring stack remains outside the mesh.
 
 ### Logs Flow
 
@@ -298,6 +320,10 @@ Helm chart defaults:
 - `ServiceMonitor/argo-workflows`
   Scrapes the workflow-controller metrics service in namespace `argo` over
   HTTPS
+- `ServiceMonitor/cert-manager-istio-csr`
+  Scrapes the `cert-manager-istio-csr-metrics` service in namespace
+  `istio-system`; this is repo-managed so the scrape object appears only after
+  the Prometheus Operator CRDs exist
 - `ServiceMonitor/prometheus-operator`
   Scrapes the Prometheus Operator HTTPS endpoint in namespace `monitoring`
   with TLS verification disabled for the self-monitor path

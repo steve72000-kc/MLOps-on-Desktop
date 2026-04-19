@@ -4,6 +4,11 @@ defaultRules:
 alertmanager:
   enabled: true
   alertmanagerSpec:
+    podMetadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        sidecar.istio.io/inject: "false"
     replicas: 1
     retention: 4h
     storage:
@@ -31,6 +36,10 @@ kubeApiServer:
     insecureSkipVerify: true
 
 prometheusOperator:
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+  podLabels:
+    sidecar.istio.io/inject: "false"
   admissionWebhooks:
     enabled: true
     certManager:
@@ -46,6 +55,10 @@ prometheusOperator:
       memory: 512Mi
 
 kube-state-metrics:
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+  podLabels:
+    sidecar.istio.io/inject: "false"
   resources:
     requests:
       cpu: 50m
@@ -68,6 +81,19 @@ prometheus-node-exporter:
 
 prometheus:
   prometheusSpec:
+    podMetadata:
+      annotations:
+        # Use the sidecar only to mint Istio workload certs for scrapes.
+        sidecar.istio.io/inject: "true"
+        traffic.sidecar.istio.io/includeInboundPorts: ""
+        traffic.sidecar.istio.io/includeOutboundIPRanges: ""
+        proxy.istio.io/config: |
+          proxyMetadata:
+            OUTPUT_CERTS: /etc/istio-output-certs
+        sidecar.istio.io/userVolumeMount: |
+          [{"name":"istio-certs","mountPath":"/etc/istio-output-certs"}]
+      labels:
+        sidecar.istio.io/inject: "true"
     replicas: 1
     retention: 4h
     scrapeInterval: 30s
@@ -87,6 +113,13 @@ prometheus:
       limits:
         cpu: 1000m
         memory: 2Gi
+    volumes:
+    - name: istio-certs
+      emptyDir:
+        medium: Memory
+    volumeMounts:
+    - name: istio-certs
+      mountPath: /etc/prom-certs
     additionalScrapeConfigs:
     - job_name: platform-annotated-pods
       kubernetes_sd_configs:
@@ -125,6 +158,14 @@ prometheus:
         action: replace
         target_label: pod
     - job_name: kserve-runtime-pods
+      # KServe runtime metrics stay on the workload port, so scrape them with
+      # Istio mTLS using certs written by the Prometheus sidecar.
+      scheme: https
+      tls_config:
+        ca_file: /etc/prom-certs/root-cert.pem
+        cert_file: /etc/prom-certs/cert-chain.pem
+        key_file: /etc/prom-certs/key.pem
+        insecure_skip_verify: true
       kubernetes_sd_configs:
       - role: pod
       relabel_configs:
@@ -158,6 +199,10 @@ prometheus:
         target_label: pod
 
 grafana:
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+  podLabels:
+    sidecar.istio.io/inject: "false"
   adminUser: admin
   adminPassword: grafanaadmin123
   persistence:

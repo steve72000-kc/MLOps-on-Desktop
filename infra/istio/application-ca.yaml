@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: knative-istio
+  name: istio-ca
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-5"
+    argocd.argoproj.io/sync-wave: "-11"
   finalizers:
   - resources-finalizer.argocd.argoproj.io/foreground
 spec:
@@ -12,10 +12,10 @@ spec:
   source:
     repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitops-admin/ai-ml.git
     targetRevision: HEAD
-    path: infra/knative/manifests/net-istio
+    path: infra/istio/manifests/ca
   destination:
     server: https://kubernetes.default.svc
-    namespace: knative-serving
+    namespace: istio-system
   syncPolicy:
     automated:
       prune: true

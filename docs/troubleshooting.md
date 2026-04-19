@@ -5,6 +5,35 @@
 - Verify Docker is running: `docker info`
 - Remove stale cluster: `./bootstrap/uninstall.sh`
 
+## `bootstrap/install.sh` or `bootstrap/gitops-init.sh` refuses dirty GitOps paths
+
+Symptoms:
+
+- bootstrap exits with messages such as:
+  - `Uncommitted changes detected in infra/argocd/argocd-cm-kustomize-build-options.yaml.`
+  - `Uncommitted changes detected under infra.`
+
+Cause:
+
+- `bootstrap/install.sh` now seeds the committed `argocd-cm` config before it
+  creates `Application/ai-ml-root`, so that file must already be committed.
+- `bootstrap/gitops-init.sh` validates both `clusters/kind/bootstrap` and the
+  composed `infra/` tree because Argo CD will later pull only committed Git
+  state from those paths.
+
+Fix:
+
+- commit or stash changes under:
+  - `infra/`
+  - `clusters/kind/bootstrap/`
+- rerun:
+  - `./bootstrap/install.sh`
+  - or `./bootstrap/gitops-init.sh` if only the GitOps wiring needs refresh
+
+Verification:
+
+- `git status --short -- clusters/kind/bootstrap infra`
+
 ## `kubectl` API calls fail with `Unable to connect to the server: EOF`
 
 Symptom:
@@ -372,8 +401,10 @@ Checks:
 
 Fixes used in repo:
 - Relaxed probe timing in `infra/mlflow/base/values.yaml`.
-- tenant baseline policy allows only `istio-system/app=istiod` control-plane
-  egress and `mlflow-allow-ingress-mesh` keeps MLflow reachable from
+- tenant baseline policy allows only the two mesh control-plane dependencies
+  `istio-system/app=istiod` and
+  `istio-system/app=cert-manager-istio-csr`, and
+  `mlflow-allow-ingress-mesh` keeps MLflow reachable from
   `istio-ingressgateway` pods.
 
 ## MLflow tag-sync workflow appears "stuck" in `Running`
@@ -552,9 +583,10 @@ Cause:
 - restrictive tenant egress policy blocks artifact access to MinIO.
 
 Current repo state:
-- shared tenant guardrails keep DNS and `istiod` control-plane egress at the
-  namespace baseline, while `serving-runtime-egress-minio` carries the model
-  artifact path explicitly
+- shared tenant guardrails keep DNS plus `istiod` and
+  `cert-manager-istio-csr` control-plane egress at the namespace baseline,
+  while `serving-runtime-egress-minio` carries the model artifact path
+  explicitly
 
 Check:
 - `kubectl -n ml-team-a logs <predictor-pod> -c storage-initializer`

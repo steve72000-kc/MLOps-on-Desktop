@@ -17,8 +17,8 @@ spec:
       labels:
         platform.ai-ml/network-role: hub-dispatcher
         app.kubernetes.io/component: mlflow-tag-sync-hub
-      annotations:
         sidecar.istio.io/inject: "true"
+      annotations:
         proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
     templates:
     - name: dispatch

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: monitoring
-  labels:
-    istio-injection: disabled
+  # Leave injection labels unset so Prometheus can opt in via pod labels while
+  # the rest of the namespace stays outside the mesh by default.
   annotations:
     argocd.argoproj.io/sync-wave: "5"

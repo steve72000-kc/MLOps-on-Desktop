@@ -10,8 +10,9 @@ spec:
   policyTypes:
   - Egress
   egress:
-  # Sidecar-injected hub pods need xDS/CA access to istiod, not broad
-  # namespace-wide reachability inside istio-system.
+  # Sidecar-injected hub pods need both xDS (`istiod`) and workload-cert
+  # issuance (`cert-manager-istio-csr`), not broad namespace-wide reachability
+  # inside istio-system.
   - to:
     - namespaceSelector:
         matchLabels:
@@ -19,6 +20,13 @@ spec:
       podSelector:
         matchLabels:
           app: istiod
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          app: cert-manager-istio-csr
   - to:
     - namespaceSelector:
         matchExpressions:
