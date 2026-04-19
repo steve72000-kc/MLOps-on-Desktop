@@ -38,10 +38,10 @@ for `ConfigMap` objects labeled `platform.ai-ml/tenant-config=true`.
 
 Tenant configs are skipped when `data.syncEnabled` is `false`, `0`, or `no`.
 
-Required tenant config data:
+Tenant config data:
 
-- `tenant`
-- `namespace`
+- `tenant` (Optional: Falls back to metadata.labels["platform.ai-ml/tenant"] or metadata.namespace if omitted)
+- `namespace` (Optional: Falls back to metadata.namespace if omitted)
 - `trackingUri`
 
 Tenant config defaults applied by the hub when keys are omitted:

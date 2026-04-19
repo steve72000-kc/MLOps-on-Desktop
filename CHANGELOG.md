@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+### Added
+
+- cert-manager-backed Istio workload identity with `cert-manager-istio-csr`, explicit mesh root CA pinning from the public certificate only, and repo-managed strict mTLS by default with narrow local-profile permissive exceptions.
+
 ## [1.0.1] - 2026-04-12
 
 ### Added

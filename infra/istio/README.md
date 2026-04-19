@@ -57,6 +57,8 @@ local profile intentionally mixes meshed and non-meshed workloads:
 - `knative-serving`: `PERMISSIVE`
 - `monitoring`: `PERMISSIVE`
 - `istio-ingressgateway` workloads: `PERMISSIVE`
+- additional Knative webhook `PeerAuthentication` objects keep port `8443`
+  permissive for `app=webhook` and `app=net-istio-webhook`
 
 The `knative-serving` exception keeps the Knative control plane compatible with
 sidecar injection. The `monitoring` exception lets Prometheus keep an Istio
@@ -66,6 +68,11 @@ monitoring namespace is intentionally left without an `istio-injection` label
 so Prometheus can use pod-label opt-in under Istio 1.24. Prometheus still
 disables traffic interception, so it can keep direct scrape behavior while
 using Istio-issued certificates where the target path needs mTLS.
+
+The extra Knative webhook carve-outs come from the upstream `net-istio`
+integration and are narrower than the namespace-wide `knative-serving`
+exception: they leave the webhook listener on port `8443` permissive while the
+rest of the namespace follows the broader namespace policy.
 
 ## Runtime Relationships
 
