@@ -108,6 +108,18 @@ ensure_local_state_dirs() {
   ensure_writable_directory "$GITEA_HOST_DATA_DIR"
 }
 
+best_effort_chmod() {
+  local mode="$1"
+  local path
+
+  shift
+  for path in "$@"; do
+    if [[ -e "$path" ]]; then
+      chmod "$mode" "$path" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 validate_lb_ip_config() {
   if [[ "$ARGOCD_LB_IP" == "$GITEA_HTTP_LB_IP" ]] || [[ "$ARGOCD_LB_IP" == "$GITEA_SSH_LB_IP" ]] || [[ "$GITEA_HTTP_LB_IP" == "$GITEA_SSH_LB_IP" ]]; then
     echo "Configured LoadBalancer IPs must be unique:" >&2
@@ -207,11 +219,11 @@ ensure_minio_host_data_dir() {
   mkdir -p "${MINIO_HOST_DATA_DIR}"
   mkdir -p "${minio_data_path}"
   mkdir -p "${mlflow_data_root}"
-  chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}" "${minio_data_path}" "${mlflow_data_root}" || true
+  best_effort_chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}" "${minio_data_path}" "${mlflow_data_root}"
 
   for tenant in ${MLFLOW_TENANTS}; do
     mkdir -p "${mlflow_data_root}/${tenant}"
-    chmod "${MINIO_HOST_DATA_MODE}" "${mlflow_data_root}/${tenant}" || true
+    best_effort_chmod "${MINIO_HOST_DATA_MODE}" "${mlflow_data_root}/${tenant}"
   done
 }
 
@@ -223,7 +235,7 @@ ensure_gitea_host_data_dir() {
   rm -rf "${GITEA_HOST_DATA_DIR}"
   mkdir -p "${GITEA_HOST_DATA_DIR}"
   mkdir -p "${gitea_data_path}"
-  chmod "${GITEA_HOST_DATA_MODE}" "${GITEA_HOST_DATA_DIR}" "${gitea_data_path}" || true
+  best_effort_chmod "${GITEA_HOST_DATA_MODE}" "${GITEA_HOST_DATA_DIR}" "${gitea_data_path}"
 }
 
 build_kind_config() {

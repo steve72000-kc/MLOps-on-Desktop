@@ -9,6 +9,17 @@ STATE_ROOT_DIR="$(dirname "${MINIO_HOST_DATA_DIR}")"
 TARGET_OWNER_UID="${SUDO_UID:-$(id -u)}"
 TARGET_OWNER_GID="${SUDO_GID:-$(id -g)}"
 
+best_effort_chmod() {
+  mode="$1"
+  shift
+
+  for path in "$@"; do
+    if [ -e "$path" ]; then
+      chmod "$mode" "$path" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 restore_owner() {
   if [ "$(id -u)" -ne 0 ] || [ -z "${SUDO_UID:-}" ] || [ -z "${SUDO_GID:-}" ]; then
     return 0
@@ -33,10 +44,10 @@ mkdir -p "${MINIO_HOST_DATA_DIR}/mlflow"
 for tenant in ${MLFLOW_TENANTS}; do
   mkdir -p "${MINIO_HOST_DATA_DIR}/mlflow/${tenant}"
 done
-chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}" "${MINIO_HOST_DATA_DIR}/minio" || true
-chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}/mlflow" || true
+best_effort_chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}" "${MINIO_HOST_DATA_DIR}/minio"
+best_effort_chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}/mlflow"
 for tenant in ${MLFLOW_TENANTS}; do
-  chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}/mlflow/${tenant}" || true
+  best_effort_chmod "${MINIO_HOST_DATA_MODE}" "${MINIO_HOST_DATA_DIR}/mlflow/${tenant}"
 done
 restore_owner
 
