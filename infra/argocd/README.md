@@ -1,7 +1,7 @@
 # Argo CD Layer
 
 `infra/argocd/` defines the team root Argo CD applications and the shared
-Kustomize build option used by Argo CD for this repo.
+Argo CD configuration used by this repo.
 
 ## Composition
 
@@ -40,17 +40,37 @@ so pushing back to GitHub/Codeberg remains possible via an explicit
 The team root app is the handoff from the shared infra layer to the team layer.
 Everything under `teams/<team>/` is reconciled through that root application.
 
-## Build Options
+## Shared Argo CD Config
 
 `argocd-cm-kustomize-build-options.yaml` sets:
 
 ```yaml
 kustomize.buildOptions: --load-restrictor LoadRestrictionsNone
+resource.customizations: |
+  argoproj.io/Application:
+    health.lua: ...
 ```
 
 This allows Argo CD to render team paths that reference shared files outside the
 team directory tree, including the workflow script `ConfigMap` base under
 `infra/argo-workflows/scripts/`.
+
+It also restores health assessment for child `Application` resources in the
+app-of-apps pattern. That matters because this repo uses sync waves on child
+applications under `infra/`, and Argo CD needs child app health enabled in
+order to gate later waves on earlier child apps actually becoming healthy.
+
+In the supported Kind bootstrap flow, `bootstrap/install.sh` pre-applies the
+committed copy of this `ConfigMap` and restarts `argocd-repo-server` plus
+`argocd-application-controller` before `bootstrap/gitops-init.sh` creates
+`Application/ai-ml-root`.
+
+That means the first supported bootstrap sync already has this config in place,
+while the same manifest remains GitOps-owned here for steady state and later
+reconciliation.
+
+If someone bypasses `bootstrap/install.sh` and creates `Application/ai-ml-root`
+manually first, the original same-parent-app race still applies.
 
 ## Local Profile
 
@@ -73,16 +93,17 @@ Check the root applications:
 kubectl -n argocd get applications | rg 'ml-team-(a|b)-root'
 ```
 
-Check the shared Argo CD build option:
+Check the shared Argo CD config:
 
 ```bash
-kubectl -n argocd get configmap argocd-cm -o yaml | rg 'kustomize.buildOptions'
+kubectl -n argocd get configmap argocd-cm -o yaml | rg 'kustomize.buildOptions|resource.customizations'
 ```
 
 Expected state:
 
 - the render includes `argocd-cm` and the enabled root applications
 - `argocd-cm` includes `--load-restrictor LoadRestrictionsNone`
+- `argocd-cm` includes the `argoproj.io/Application` health customization
 
 ## Related Paths
 

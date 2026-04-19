@@ -38,10 +38,10 @@ for `ConfigMap` objects labeled `platform.ai-ml/tenant-config=true`.
 
 Tenant configs are skipped when `data.syncEnabled` is `false`, `0`, or `no`.
 
-Required tenant config data:
+Tenant config data:
 
-- `tenant`
-- `namespace`
+- `tenant` (Optional: Falls back to metadata.labels["platform.ai-ml/tenant"] or metadata.namespace if omitted)
+- `namespace` (Optional: Falls back to metadata.namespace if omitted)
 - `trackingUri`
 
 Tenant config defaults applied by the hub when keys are omitted:
@@ -84,6 +84,11 @@ name.
 workflows use the template defaults `http` and `ai-ml.local` unless overridden
 manually.
 
+The shared hub and child workflow pods opt into Istio through the pod label
+`sidecar.istio.io/inject: "true"`. The `argo` namespace itself remains
+unlabeled for injection, so label-based opt-in is what keeps MLflow discovery
+and writeback traffic mesh-compatible under the repo's strict-mTLS rollout.
+
 ## Tenant Runtime Contract
 
 Each tenant namespace that participates in the shared flow must contain:
@@ -108,9 +113,14 @@ Each tenant namespace that participates in the shared flow must contain:
 Tenant least-privilege networking is split across the shared workflow and
 tenant-core bases:
 
+- `teams/_bases/tenant-core/networkpolicy.yaml` keeps tenant namespace baseline
+  egress limited to DNS plus the two mesh control-plane dependencies used by
+  injected tenant pods:
+  `istio-system/app=istiod` for xDS and
+  `istio-system/app=cert-manager-istio-csr` for workload certificate issuance
 - `infra/argo-workflows/networkpolicy-hub-egress.yaml` limits hub pods in
-  `argo` to Kubernetes API, tenant MLflow, DNS, and
-  `istio-system/app=istiod`
+  `argo` to Kubernetes API, tenant MLflow, DNS, and mesh control-plane egress
+  to `istiod` plus `cert-manager-istio-csr`
 - `teams/_bases/tenant-core/networkpolicy-mlflow-allow-argo.yaml` allows only
   hub pods in `argo` to reach tenant MLflow pods for model discovery
 - `teams/_bases/tenant-core/networkpolicy-mlflow-allow-workflows.yaml` allows
@@ -233,7 +243,7 @@ Inputs:
 
 Runtime behavior:
 
-- runs with Istio sidecar injection
+- runs with Istio sidecar injection via pod label opt-in
 - mounts the tenant-local script `ConfigMap`
 - calls `git_prune_manifests.sh`
 - exits non-zero when `prune_status=failed`

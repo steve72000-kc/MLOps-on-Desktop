@@ -13,3 +13,11 @@ patches:
     kind: ConfigMap
     name: config-deployment
     namespace: knative-serving
+- path: namespace-istio-injection-patch.yaml
+  target:
+    kind: Namespace
+    name: knative-serving
+- path: deployment-istio-injection-patch.yaml
+  target:
+    kind: Deployment
+    namespace: knative-serving

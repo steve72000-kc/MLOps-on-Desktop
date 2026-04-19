@@ -4,7 +4,7 @@ metadata:
   name: knative-serving-core
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-7"
+    argocd.argoproj.io/sync-wave: "-6"
   finalizers:
   - resources-finalizer.argocd.argoproj.io/foreground
 spec:

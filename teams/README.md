@@ -40,8 +40,8 @@ Ownership boundaries:
   `apps/tenants/<team>/...`
 - shared workflow and tenant-core bases now carry the least-privilege
   `NetworkPolicy` set for hub, MLflow, workflow, and serving-runtime roles,
-  including explicit `istiod`, `istio-ingressgateway`, and `activator`
-  selectors
+  including explicit `istiod`, `cert-manager-istio-csr`,
+  `istio-ingressgateway`, and `activator` selectors
 
 Local build constraint:
 

@@ -9,8 +9,9 @@ spec:
   - Egress
   ingress: []
   egress:
-  # Injected tenant pods only need Istio control-plane egress at the namespace
-  # baseline. Data-plane ingress is opened with workload-specific policies.
+  # Injected tenant pods need both xDS (`istiod`) and workload-cert issuance
+  # (`cert-manager-istio-csr`) at the namespace baseline. Data-plane ingress is
+  # opened with workload-specific policies.
   - to:
     - namespaceSelector:
         matchLabels:
@@ -18,6 +19,13 @@ spec:
       podSelector:
         matchLabels:
           app: istiod
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          app: cert-manager-istio-csr
   - to:
     - namespaceSelector:
         matchLabels:
