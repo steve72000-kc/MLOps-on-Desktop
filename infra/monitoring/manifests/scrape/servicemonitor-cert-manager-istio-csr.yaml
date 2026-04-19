@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cert-manager-istio-csr
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  namespaceSelector:
+    matchNames:
+    - istio-system
+  selector:
+    matchLabels:
+      app: cert-manager-istio-csr-metrics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scrapeTimeout: 10s

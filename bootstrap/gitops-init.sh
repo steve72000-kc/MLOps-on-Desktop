@@ -88,25 +88,37 @@ resolve_argocd_app_path() {
   exit 1
 }
 
-ensure_gitops_path_committed() {
-  if [[ ! -d "${ROOT_DIR}/${ARGOCD_APP_PATH}" ]]; then
-    echo "Configured Argo app path does not exist in working tree: ${ARGOCD_APP_PATH}" >&2
-    exit 1
+gitops_paths_to_validate() {
+  printf '%s\n' "$ARGOCD_APP_PATH"
+  # The default bootstrap app is only an entrypoint; the rendered payload lives under infra/.
+  if [[ "$ARGOCD_APP_PATH" == "clusters/kind/bootstrap" ]]; then
+    printf '%s\n' "infra"
   fi
+}
 
-  if ! git -C "$ROOT_DIR" ls-tree -r --name-only HEAD -- "${ARGOCD_APP_PATH}/" | grep -q .; then
-    echo "Configured Argo app path is not present in the current commit: ${ARGOCD_APP_PATH}" >&2
-    echo "Commit the GitOps bootstrap manifests before running install:" >&2
-    echo "  git add ${ARGOCD_APP_PATH}" >&2
-    echo "  git commit -m \"Add GitOps bootstrap manifests\"" >&2
-    exit 1
-  fi
+ensure_gitops_paths_committed() {
+  local path
 
-  if git -C "$ROOT_DIR" status --porcelain -- "${ARGOCD_APP_PATH}" | grep -q .; then
-    echo "Uncommitted changes detected under ${ARGOCD_APP_PATH}." >&2
-    echo "Argo CD tracks pushed commits only. Commit changes and rerun." >&2
-    exit 1
-  fi
+  while IFS= read -r path; do
+    if [[ ! -d "${ROOT_DIR}/${path}" ]]; then
+      echo "Configured GitOps path does not exist in working tree: ${path}" >&2
+      exit 1
+    fi
+
+    if ! git -C "$ROOT_DIR" ls-tree -r --name-only HEAD -- "${path}/" | grep -q .; then
+      echo "Configured GitOps path is not present in the current commit: ${path}" >&2
+      echo "Commit the GitOps manifests before running install:" >&2
+      echo "  git add ${path}" >&2
+      echo "  git commit -m \"Update GitOps manifests\"" >&2
+      exit 1
+    fi
+
+    if git -C "$ROOT_DIR" status --porcelain -- "${path}" | grep -q .; then
+      echo "Uncommitted changes detected under ${path}." >&2
+      echo "Argo CD tracks pushed commits only. Commit or stash the GitOps paths and rerun." >&2
+      exit 1
+    fi
+  done < <(gitops_paths_to_validate)
 }
 
 current_branch() {
@@ -428,7 +440,7 @@ main() {
   validate_repo_identity_alignment
   require_git_repo
   resolve_argocd_app_path
-  ensure_gitops_path_committed
+  ensure_gitops_paths_committed
   detect_ssh_key_paths
 
   local branch

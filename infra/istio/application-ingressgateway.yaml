@@ -4,7 +4,7 @@ metadata:
   name: istio-ingressgateway
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-8"
+    argocd.argoproj.io/sync-wave: "-7"
   finalizers:
   - resources-finalizer.argocd.argoproj.io/foreground
 spec:
@@ -25,6 +25,9 @@ spec:
         value: "false"
       - name: replicaCount
         value: "1"
+      values: |
+        global:
+          caAddress: cert-manager-istio-csr.istio-system.svc:443
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system

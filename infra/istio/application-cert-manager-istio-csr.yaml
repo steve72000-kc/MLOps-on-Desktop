@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager-istio-csr
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-9"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager-istio-csr
+    targetRevision: v0.16.0
+    helm:
+      releaseName: cert-manager-istio-csr
+      values: |
+        app:
+          certmanager:
+            namespace: istio-system
+          tls:
+            trustDomain: cluster.local
+            rootCAFile: /var/run/secrets/istio-csr/ca.pem
+            certificateDNSNames:
+            - cert-manager-istio-csr.istio-system.svc
+          istio:
+            namespace: istio-system
+            revisions:
+            - default
+        volumeMounts:
+        - name: root-ca
+          mountPath: /var/run/secrets/istio-csr
+          readOnly: true
+        volumes:
+        - name: root-ca
+          secret:
+            secretName: istio-ca
+            items:
+            - key: tls.crt
+              path: ca.pem
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

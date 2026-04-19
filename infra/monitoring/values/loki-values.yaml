@@ -24,6 +24,10 @@ loki:
 
 singleBinary:
   replicas: 1
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+  podLabels:
+    sidecar.istio.io/inject: "false"
   persistence:
     enabled: true
     size: 8Gi

@@ -30,14 +30,19 @@ polls converge to `noop/no_diff` when intent is unchanged.
    - bootstrap applies best-effort Kind node runtime tuning for `nofile` and `inotify` limits (configurable via env vars).
 2. MetalLB installation + IP pool in Docker `kind` network.
 3. Argo CD installation (`argocd-server` exposed as `LoadBalancer`).
-4. Gitea installation (`gitea-http` and `gitea-ssh` exposed as `LoadBalancer`) backed by a static hostPath PV/PVC for sqlite and repo storage.
-5. Mandatory GitOps init (`bootstrap/gitops-init.sh`):
+4. `bootstrap/install.sh` seeds the committed
+   `infra/argocd/argocd-cm-kustomize-build-options.yaml` into the live Argo CD
+   namespace and restarts `argocd-repo-server` plus
+   `argocd-application-controller` before any root application exists.
+5. Gitea installation (`gitea-http` and `gitea-ssh` exposed as `LoadBalancer`) backed by a static hostPath PV/PVC for sqlite and repo storage.
+6. Mandatory GitOps init (`bootstrap/gitops-init.sh`):
    - local git `gitea` remote reconciliation while preserving any existing `origin` remote
    - repo creation/push to Gitea
    - current local branch is set to track `gitea/<branch>`
    - current bootstrap branch is reconciled as the in-cluster repo default branch
+   - `clusters/kind/bootstrap` and the composed `infra/` tree must both be committed and clean
    - Argo CD `Application` creation/update for `ai-ml-root`
-6. Argo CD syncs infra child apps including MinIO (`infra/minio`) and monitoring (`infra/monitoring`).
+7. Argo CD syncs infra child apps including MinIO (`infra/minio`) and monitoring (`infra/monitoring`).
 
 ## Fixed Endpoints
 
@@ -53,6 +58,10 @@ polls converge to `noop/no_diff` when intent is unchanged.
 
 - `ai-ml-root` tracks `clusters/kind/bootstrap`.
 - `clusters/kind/bootstrap` composes only `infra/`.
+- `bootstrap/install.sh` seeds the committed `infra/argocd/argocd-cm-kustomize-build-options.yaml`
+  before `ai-ml-root` is created so the first supported bootstrap sync already
+  has the repo's child-application health customization and Kustomize build
+  options in place.
 - `infra/kustomization.yaml` composes:
   - platform apps (`argo-workflows`, `cert-manager`, `istio`, `knative`, `kserve`, `mlflow`, `minio`, `monitoring`)
   - `infra/argocd/` team root applications.
@@ -136,23 +145,25 @@ The checked-in tenant configs define:
 - `mlflowSecretName`
 - `gitSecretName`
 
-Team network policies keep only DNS plus `istio-system/app=istiod` at the
-namespace baseline. Tenant access to MLflow, Gitea, MinIO, and serving
-runtimes is role-scoped, and mesh ingress trust is narrowed to the pods that
-actually source traffic:
+Team network policies keep only DNS plus the two Istio control-plane
+dependencies at the namespace baseline:
+`istio-system/app=istiod` for xDS and
+`istio-system/app=cert-manager-istio-csr` for workload certificate issuance.
+Tenant access to MLflow, Gitea, MinIO, and serving runtimes is role-scoped,
+and mesh ingress trust is narrowed to the pods that actually source traffic:
 
 - hub pods in `argo` carry `platform.ai-ml/network-role=hub-dispatcher` and
-  are limited to Kubernetes API, tenant MLflow, DNS, and
-  `istio-system/app=istiod`
+  are limited to Kubernetes API, tenant MLflow, DNS, and mesh control-plane
+  egress to `istiod` plus `cert-manager-istio-csr`
 - tenant workflow pods carry `platform.ai-ml/network-role=workflow` and are
-  limited to MLflow, Gitea, Kubernetes API, DNS, MinIO, and `istiod`
-  control-plane egress
+  limited to MLflow, Gitea, Kubernetes API, DNS, MinIO, and mesh control-plane
+  egress to `istiod` plus `cert-manager-istio-csr`
 - tenant MLflow pods allow ingress only from hub pods, tenant workflow pods,
   and `istio-system` ingress gateway pods; egress to MinIO remains explicit
 - rendered KServe predictor pods carry
   `platform.ai-ml/network-role=serving-runtime` and allow ingress only from the
   `istio-system` ingress gateway and `knative-serving/app=activator` path plus
-  egress to MinIO, DNS, and `istiod`
+  egress to MinIO, DNS, `istiod`, and `cert-manager-istio-csr`
 
 `teams/_bases/workflows/` provides the shared tenant workflow runtime:
 

@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- peerauthentication-mesh-default.yaml
+- peerauthentication-ingressgateway.yaml
+- peerauthentication-knative-serving.yaml
+- peerauthentication-monitoring.yaml

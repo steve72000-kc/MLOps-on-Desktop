@@ -13,7 +13,8 @@ observability without reducing the system to isolated tool demos.
 
 It is also a working playground for people who want to learn or experiment with
 Kubernetes, Argo CD, Argo Workflows, MLflow, KServe, Knative, Istio, MinIO, and
-the operational surfaces around them by running the stack, inspecting it, and
+the operational surfaces around them (including Istio workload
+identity and strict mTLS) by running the stack, inspecting it, and
 changing it.
 
 ## Project Status
@@ -51,6 +52,7 @@ flowchart LR
 
 Install behavior:
 
+- treats bootstrap as a fresh-cluster flow and recreates the local kind cluster if it already exists
 - preserves an existing local `origin` remote such as GitHub or Codeberg
 - creates or reconciles local `gitea` remote
 - creates or reconciles the repo in in-cluster Gitea
@@ -58,8 +60,12 @@ Install behavior:
 - mounts Gitea repos and sqlite state on the host under `.local/gitea-data`
 - wipes `.local/gitea-data` on each `./bootstrap/install.sh` so every fresh bootstrap starts from a clean in-cluster Gitea state
 - fails fast if `.local/` is not writable instead of continuing into a broken bootstrap
+- requires a real git repository with at least one commit before bootstrap starts
+- requires the bootstrap-critical Argo CD config at `infra/argocd/argocd-cm-kustomize-build-options.yaml` to be present in `HEAD` and free of uncommitted changes
+- seeds that committed Argo CD config into the live `argocd` namespace and restarts `argocd-repo-server` plus `argocd-application-controller` before any root app is created
 - pushes the current branch, makes the current local branch track `gitea/<branch>`,
   and reconciles that branch as the in-cluster repo default branch
+- requires `clusters/kind/bootstrap` and the composed `infra/` tree to be committed and clean before creating or updating GitOps state
 - creates or updates the Argo CD root app (`ai-ml-root`)
 - intentionally keeps the in-cluster GitOps repo path canonical as `gitops-admin/ai-ml.git` while reconciling its default branch to your current local branch
 
@@ -153,7 +159,7 @@ Platform components:
 - Argo CD `v3.3.6`
 - Argo Workflows `v3.7.3`
 - cert-manager `v1.19.1`
-- Istio `1.24.2`
+- Istio `1.24.2` with cert-manager-backed workload identity and strict mTLS by default
 - Knative Serving `v1.20.x` with `net-istio`
 - KServe `v0.16.0`
 - MLflow chart `1.7.3`

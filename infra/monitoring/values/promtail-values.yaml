@@ -5,6 +5,12 @@ deployment:
   enabled: false
   replicaCount: 1
 
+podAnnotations:
+  sidecar.istio.io/inject: "false"
+
+podLabels:
+  sidecar.istio.io/inject: "false"
+
 extraArgs:
 - -config.expand-env=true
 

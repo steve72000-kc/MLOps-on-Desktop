@@ -42,6 +42,7 @@ GITEA_ADMIN_USERNAME="${GITEA_ADMIN_USERNAME:-$CANONICAL_GITEA_ADMIN_USERNAME}"
 GITEA_ADMIN_PASSWORD="${GITEA_ADMIN_PASSWORD:-gitops123}"
 GITEA_ADMIN_EMAIL="${GITEA_ADMIN_EMAIL:-gitops-admin@example.local}"
 GITEA_REPO_NAME="${GITEA_REPO_NAME:-$CANONICAL_GITEA_REPO_NAME}"
+ARGOCD_BOOTSTRAP_CONFIG_PATH="${ARGOCD_BOOTSTRAP_CONFIG_PATH:-infra/argocd/argocd-cm-kustomize-build-options.yaml}"
 
 # Optional Kind node process file-descriptor tuning for log-heavy local profiles.
 # Set to empty to skip.
@@ -129,6 +130,37 @@ validate_gitops_repo_identity() {
     echo "Unsupported GITEA_REPO_NAME override: ${GITEA_REPO_NAME}" >&2
     echo "Checked-in Argo CD applications currently expect owner path ${CANONICAL_GITEA_ADMIN_USERNAME}/${CANONICAL_GITEA_REPO_NAME}.git." >&2
     echo "Keep GITEA_REPO_NAME=${CANONICAL_GITEA_REPO_NAME} even if your local clone directory name differs." >&2
+    exit 1
+  fi
+}
+
+require_git_repo() {
+  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "Expected a git working tree at: $ROOT_DIR" >&2
+    exit 1
+  fi
+  if ! git -C "$ROOT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+    echo "Git repository has no commits yet. Commit once before running bootstrap." >&2
+    exit 1
+  fi
+}
+
+ensure_argocd_bootstrap_config_committed() {
+  if [[ ! -f "${ROOT_DIR}/${ARGOCD_BOOTSTRAP_CONFIG_PATH}" ]]; then
+    echo "Bootstrap-critical Argo CD config does not exist in working tree: ${ARGOCD_BOOTSTRAP_CONFIG_PATH}" >&2
+    exit 1
+  fi
+
+  if ! git -C "$ROOT_DIR" cat-file -e "HEAD:${ARGOCD_BOOTSTRAP_CONFIG_PATH}" 2>/dev/null; then
+    echo "Bootstrap-critical Argo CD config is not present in the current commit: ${ARGOCD_BOOTSTRAP_CONFIG_PATH}" >&2
+    echo "Commit the file before running bootstrap so the seeded config matches GitOps state." >&2
+    exit 1
+  fi
+
+  if git -C "$ROOT_DIR" status --porcelain -- "${ARGOCD_BOOTSTRAP_CONFIG_PATH}" | grep -q .; then
+    echo "Uncommitted changes detected in ${ARGOCD_BOOTSTRAP_CONFIG_PATH}." >&2
+    echo "bootstrap/install.sh seeds this file from HEAD before creating Application/ai-ml-root." >&2
+    echo "Commit the file and rerun so the seeded config matches the branch pushed to Gitea." >&2
     exit 1
   fi
 }
@@ -360,6 +392,44 @@ install_argocd() {
   kubectl -n argocd patch svc argocd-server --type merge -p "{\"spec\":{\"type\":\"LoadBalancer\",\"loadBalancerIP\":\"${ARGOCD_LB_IP}\"}}"
 }
 
+wait_for_argocd_bootstrap_components() {
+  local waited=0
+
+  while [[ "$waited" -lt 120 ]]; do
+    if kubectl -n argocd get deployment argocd-repo-server >/dev/null 2>&1 && \
+       kubectl -n argocd get statefulset argocd-application-controller >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+
+  if ! kubectl -n argocd get deployment argocd-repo-server >/dev/null 2>&1 || \
+     ! kubectl -n argocd get statefulset argocd-application-controller >/dev/null 2>&1; then
+    echo "Argo CD bootstrap components were not created in namespace 'argocd'." >&2
+    kubectl -n argocd get deploy,statefulset >&2 || true
+    exit 1
+  fi
+
+  kubectl -n argocd wait deployment/argocd-repo-server --for=condition=Available=True --timeout=300s
+  kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
+}
+
+seed_argocd_bootstrap_config() {
+  ensure_argocd_bootstrap_config_committed
+  wait_for_argocd_bootstrap_components
+
+  # Seed the committed config before ai-ml-root exists so the first sync sees it.
+  log "Seeding committed Argo CD bootstrap config before creating ai-ml-root"
+  git -C "$ROOT_DIR" show "HEAD:${ARGOCD_BOOTSTRAP_CONFIG_PATH}" | kubectl apply -f -
+
+  log "Restarting Argo CD components so bootstrap config is active before GitOps init"
+  kubectl -n argocd rollout restart deployment/argocd-repo-server
+  kubectl -n argocd rollout restart statefulset/argocd-application-controller
+  kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
+  kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
+}
+
 install_gitea() {
   local gitea_pv_path
   local waited
@@ -515,8 +585,10 @@ main() {
   require_non_root_user
   ensure_local_state_dirs
   require_tools
+  require_git_repo
   validate_lb_ip_config
   validate_gitops_repo_identity
+  ensure_argocd_bootstrap_config_committed
   delete_existing_cluster
   ensure_kind_network
   ensure_minio_host_data_dir
@@ -527,6 +599,7 @@ main() {
   tune_kind_node_kernel_limits "$KIND_NODE_INOTIFY_MAX_USER_INSTANCES" "$KIND_NODE_INOTIFY_MAX_USER_WATCHES"
   install_metallb
   install_argocd
+  seed_argocd_bootstrap_config
   install_gitea
   initialize_gitops
   print_git_remote_handoff

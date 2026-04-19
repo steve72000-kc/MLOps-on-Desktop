@@ -4,7 +4,7 @@ metadata:
   name: istiod
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-9"
+    argocd.argoproj.io/sync-wave: "-8"
   finalizers:
   - resources-finalizer.argocd.argoproj.io/foreground
 spec:
@@ -22,6 +22,12 @@ spec:
       values: |
         autoscaleEnabled: false
         replicaCount: 1
+        meshConfig:
+          trustDomain: cluster.local
+        global:
+          caAddress: cert-manager-istio-csr.istio-system.svc:443
+        env:
+          ENABLE_CA_SERVER: "false"
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
