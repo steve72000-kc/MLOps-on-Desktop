@@ -29,20 +29,7 @@ security posture and vulnerability reporting, see
 
 ## Architecture At A Glance
 
-```mermaid
-flowchart LR
-  A[ML team<br/>MLflow registry] -->|alias + intent tags| B[Argo Workflows<br/>sync hub]
-  B --> C[Resolve alias<br/>validate intent]
-  C --> D[Render tenant-safe<br/>InferenceService YAML]
-  D --> E[GitOps repo writeback<br/>apps/tenants/<team>/...]
-  E --> F[Argo CD]
-  F --> G[KServe + Knative + Istio]
-  G --> H[Model endpoint]
-  F --> I[MinIO-backed artifacts]
-  G --> J[Prometheus + Grafana + Loki]
-  K[infra/<br/>shared platform services] --> F
-  L[teams/<team>/<br/>tenant-owned overlays] --> E
-```
+![ML Ops On Desktop architecture overview](docs/Architecture-Diagram.png)
 
 ## Start Here
 
